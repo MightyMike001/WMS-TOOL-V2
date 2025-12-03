@@ -244,9 +244,16 @@
                 const lines = await fetchOrderLines(orderId);
                 ORDER_LINE_CACHE[orderId] = lines;
 
-                const updatedOrder = state.activeOrder && state.activeOrder.id === orderId
-                    ? { ...state.activeOrder, items: lines.length, totalItems: lines.length }
-                    : state.activeOrder;
+                const orderIndex = MOCK_ORDERS.findIndex(o => o.id === orderId);
+                const updatedOrder = orderIndex !== -1
+                    ? { ...MOCK_ORDERS[orderIndex], items: lines.length, totalItems: lines.length }
+                    : (state.activeOrder && state.activeOrder.id === orderId
+                        ? { ...state.activeOrder, items: lines.length, totalItems: lines.length }
+                        : state.activeOrder);
+
+                if (orderIndex !== -1) {
+                    MOCK_ORDERS[orderIndex] = updatedOrder;
+                }
 
                 setState({
                     pickItems: lines,
@@ -262,10 +269,12 @@
             }
         }
 
-        const getOrderLineCounts = () => {
-            const totalLines = state.pickItems?.length || state.activeOrder?.items || 0;
-            const pickedCount = state.pickedItems?.size || 0;
-            const remainingLines = Math.max(totalLines - pickedCount, 0);
+        const getOrderLineCountsForOrder = (order) => {
+            if (!order) return { remainingLines: 0, totalLines: 0 };
+
+            const cachedLines = ORDER_LINE_CACHE[order.id];
+            const totalLines = (cachedLines?.length) ?? order.totalItems ?? order.items ?? 0;
+            const remainingLines = order.items ?? totalLines;
 
             return { remainingLines, totalLines };
         };
@@ -314,7 +323,6 @@
 
         function renderDashboard() {
             const t = getTheme();
-            const lineCounts = getOrderLineCounts();
             const sortedOrders = sortOrders(MOCK_ORDERS);
             const sortLabels = {
                 priority: 'Urgentie',
@@ -388,7 +396,10 @@
                                             <span class="hidden sm:inline">•</span>
                                             <span class="whitespace-nowrap flex items-center gap-1"><i data-lucide="clock" width="12"></i>${new Date(order.createdAt).toLocaleString('nl-NL', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}</span>
                                             <span class="hidden sm:inline">•</span>
-                                            <span class="whitespace-nowrap flex items-center gap-1"><i data-lucide="list" width="12"></i>Nog ${lineCounts.remainingLines} / ${lineCounts.totalLines} regels</span>
+                                            ${(() => {
+                                                const lineCounts = getOrderLineCountsForOrder(order);
+                                                return `<span class="whitespace-nowrap flex items-center gap-1"><i data-lucide="list" width="12"></i>Nog ${lineCounts.remainingLines} / ${lineCounts.totalLines} regels</span>`;
+                                            })()}
                                         </div>
                                     </div>
                                     <div class="ml-auto shrink-0">
