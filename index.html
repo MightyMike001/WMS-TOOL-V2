@@ -143,7 +143,8 @@
             // Initialisatieflags
             initialOrderLinesLoaded: false,
             isLoadingInitialOrderLines: false,
-            orderLineMap: {}
+            orderLineMap: {},
+            orderLineState: {},
         };
 
         // --- 2. STATE MANAGEMENT ---
@@ -251,20 +252,25 @@
 
                 const orderIndex = MOCK_ORDERS.findIndex(o => o.id === orderId);
                 const updatedOrder = orderIndex !== -1
-                    ? { ...MOCK_ORDERS[orderIndex], items: lines.length, totalItems: lines.length }
+                    ? MOCK_ORDERS[orderIndex]
                     : (state.activeOrder && state.activeOrder.id === orderId
-                        ? { ...state.activeOrder, items: lines.length, totalItems: lines.length }
+                        ? state.activeOrder
                         : state.activeOrder);
 
-                if (orderIndex !== -1) {
-                    MOCK_ORDERS[orderIndex] = updatedOrder;
-                }
+                const updatedOrderLineState = {
+                    ...state.orderLineState,
+                    [orderId]: {
+                        totalLines: lines.length,
+                        remainingLines: state.orderLineState[orderId]?.remainingLines ?? lines.length,
+                    }
+                };
 
                 setState({
                     pickItems: lines,
                     isLoadingOrderLines: false,
                     activeOrder: updatedOrder,
                     orderLineMap: { ...state.orderLineMap, [orderId]: lines },
+                    orderLineState: updatedOrderLineState,
                 });
             } catch (error) {
                 setState({
@@ -275,7 +281,7 @@
             }
         }
 
-        const getOrderLineCountsForOrder = (order) => deriveOrderLineCounts(order, state.orderLineMap);
+        const getOrderLineCountsForOrder = (order) => deriveOrderLineCounts(order, state.orderLineState, state.orderLineMap);
 
         async function initializeOrderLineCounts() {
             if (state.isLoadingInitialOrderLines || state.initialOrderLinesLoaded) {
@@ -286,23 +292,25 @@
 
             try {
                 const initializedOrderLineMap = { ...state.orderLineMap };
+                const initializedOrderLineState = { ...state.orderLineState };
 
-                const updatedOrders = await Promise.all(MOCK_ORDERS.map(async (order) => {
+                await Promise.all(MOCK_ORDERS.map(async (order) => {
                     try {
                         const lines = await fetchOrderLines(order.id);
                         initializedOrderLineMap[order.id] = lines;
-                        return { ...order, items: lines.length, totalItems: lines.length };
+                        initializedOrderLineState[order.id] = {
+                            totalLines: lines.length,
+                            remainingLines: initializedOrderLineState[order.id]?.remainingLines ?? lines.length,
+                        };
                     } catch (error) {
                         console.warn(`Initialiseren van orderregels mislukt voor ${order.id}`, error);
-                        return order;
                     }
                 }));
-
-                MOCK_ORDERS = updatedOrders;
 
                 setState({
                     initialOrderLinesLoaded: true,
                     orderLineMap: initializedOrderLineMap,
+                    orderLineState: initializedOrderLineState,
                 });
             } finally {
                 setState({ isLoadingInitialOrderLines: false });
@@ -849,13 +857,23 @@
             }
 
             let updatedOrderLineMap = { ...state.orderLineMap };
+            let updatedOrderLineState = { ...state.orderLineState };
 
             if (updatedOrder?.id) {
                 if (newStatus === 'completed') {
                     const { [updatedOrder.id]: _, ...rest } = updatedOrderLineMap;
                     updatedOrderLineMap = rest;
+                    const { [updatedOrder.id]: __, ...restState } = updatedOrderLineState;
+                    updatedOrderLineState = restState;
                 } else {
                     updatedOrderLineMap = { ...updatedOrderLineMap, [updatedOrder.id]: itemsToKeep };
+                    updatedOrderLineState = {
+                        ...updatedOrderLineState,
+                        [updatedOrder.id]: {
+                            totalLines: totalItems,
+                            remainingLines: remainingItems,
+                        },
+                    };
                 }
             }
 
@@ -873,6 +891,7 @@
                     totalPicksShift: state.stats.totalPicksShift + count
                 },
                 orderLineMap: updatedOrderLineMap,
+                orderLineState: updatedOrderLineState,
             });
             // We blijven op de picking pagina als er nog items zijn (Partial Pick), anders terug naar dashboard
             if (itemsToKeep.length === 0) {
