@@ -1,5 +1,18 @@
-export function getOrderLineCountsForOrder(order, orderLineCache = {}) {
+export function getOrderLineCountsForOrder(order, orderLineState = {}, orderLineCache = {}) {
     if (!order) return { remainingLines: 0, totalLines: 0 };
+
+    const stateEntry = orderLineState[order.id];
+    const stateTotal = Number.isFinite(stateEntry?.totalLines) ? stateEntry.totalLines : null;
+    const stateRemaining = Number.isFinite(stateEntry?.remainingLines)
+        ? Math.max(Math.min(stateEntry.remainingLines, stateTotal ?? stateEntry.remainingLines), 0)
+        : null;
+
+    if (stateTotal !== null) {
+        return {
+            totalLines: stateTotal,
+            remainingLines: stateRemaining ?? stateTotal,
+        };
+    }
 
     const cachedEntry = orderLineCache[order.id];
     const cachedLength = Array.isArray(cachedEntry)

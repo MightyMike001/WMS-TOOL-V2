@@ -2,41 +2,42 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { getOrderLineCountsForOrder } from '../orderLogic.js';
 
-test('pending orders show full total regardless of cached subset', () => {
-    const order = { id: 'ORD-1', status: 'pending', totalItems: 4, items: 4 };
-    const cache = { 'ORD-1': [{}, {}, {}] }; // cache accidentally trimmed
+test('orders prefer per-order state values when present', () => {
+    const order = { id: 'ORD-STATE', status: 'partial', totalItems: 99 };
+    const orderLineState = { 'ORD-STATE': { totalLines: 7, remainingLines: 3 } };
+    const cache = { 'ORD-STATE': [{}, {}, {}, {}] };
 
-    const { remainingLines, totalLines } = getOrderLineCountsForOrder(order, cache);
+    const { remainingLines, totalLines } = getOrderLineCountsForOrder(order, orderLineState, cache);
 
-    assert.equal(totalLines, 4);
-    assert.equal(remainingLines, 4);
+    assert.equal(totalLines, 7);
+    assert.equal(remainingLines, 3);
 });
 
-test('partial orders keep original total while showing remaining lines', () => {
-    const order = { id: 'ORD-2', status: 'partial', totalItems: 5, items: 2 };
-    const cache = { 'ORD-2': [{}, {}] };
+test('state totals clamp remaining lines to sensible bounds', () => {
+    const order = { id: 'ORD-CLAMP', status: 'pending' };
+    const orderLineState = { 'ORD-CLAMP': { totalLines: 5, remainingLines: 8 } };
 
-    const { remainingLines, totalLines } = getOrderLineCountsForOrder(order, cache);
+    const { remainingLines, totalLines } = getOrderLineCountsForOrder(order, orderLineState);
 
     assert.equal(totalLines, 5);
-    assert.equal(remainingLines, 2);
+    assert.equal(remainingLines, 5);
 });
 
-test('completed orders never report negative remaining lines', () => {
-    const order = { id: 'ORD-3', status: 'completed', totalItems: 3, items: 0 };
-    const cache = { 'ORD-3': [] };
+test('falls back to cached line length when state is missing', () => {
+    const order = { id: 'ORD-CACHE', status: 'pending' };
+    const cache = { 'ORD-CACHE': [{}, {}, {}] };
 
-    const { remainingLines, totalLines } = getOrderLineCountsForOrder(order, cache);
-
-    assert.equal(totalLines, 3);
-    assert.equal(remainingLines, 0);
-});
-
-test('orders without cached lines still derive counts from totals', () => {
-    const order = { id: 'ORD-4', status: 'pending', totalItems: 3 };
-
-    const { remainingLines, totalLines } = getOrderLineCountsForOrder(order);
+    const { remainingLines, totalLines } = getOrderLineCountsForOrder(order, {}, cache);
 
     assert.equal(totalLines, 3);
     assert.equal(remainingLines, 3);
+});
+
+test('uses order totals when no state or cache is available', () => {
+    const order = { id: 'ORD-FALLBACK', status: 'pending', totalItems: 6 };
+
+    const { remainingLines, totalLines } = getOrderLineCountsForOrder(order);
+
+    assert.equal(totalLines, 6);
+    assert.equal(remainingLines, 6);
 });
