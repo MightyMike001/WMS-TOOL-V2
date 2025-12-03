@@ -62,7 +62,7 @@
         // Voor nu gebruiken we een mapping van mock orderregels en cachen we responses zodat elke order zijn eigen picklijst behoudt.
         let MOCK_ORDERS = [
             { id: 'ORD-2025-881', priority: 'high', createdAt: '2025-02-15T07:45:00Z', items: 4, totalItems: 4, type: 'replenishment', destination: 'WS-PACK-01', status: 'pending' },
-            { id: 'ORD-2025-882', priority: 'normal', createdAt: '2025-02-16T09:10:00Z', items: 12, totalItems: 12, type: 'outbound', destination: 'DOCK-04', status: 'pending' },
+            { id: 'ORD-2025-882', priority: 'normal', createdAt: '2025-02-16T09:10:00Z', items: 14, totalItems: 14, type: 'outbound', destination: 'DOCK-04', status: 'pending' },
             { id: 'ORD-2025-889', priority: 'low', createdAt: '2025-02-14T14:20:00Z', items: 1, totalItems: 1, type: 'internal', destination: 'LOC-Z-99', status: 'pending' },
             { id: 'ORD-2025-890', priority: 'normal', createdAt: '2025-02-16T11:05:00Z', items: 8, totalItems: 8, destination: 'A-14-02', status: 'pending' },
             { id: 'ORD-2025-891', priority: 'low', createdAt: '2025-02-16T06:35:00Z', items: 2, totalItems: 2, destination: 'B-02-11', status: 'pending' },
@@ -87,6 +87,14 @@
                 { id: 'BOX-10', name: 'Verzenddoos L', qty: 25, location: 'PK-02-01', unit: 'stk' },
                 { id: 'SKU-0092', name: 'Sensorpakket Pro', qty: 4, location: 'PK-02-009', unit: 'set' },
                 { id: 'SKU-0981', name: 'Kabelboom Compact', qty: 6, location: 'PK-02-010', unit: 'st' },
+                { id: 'LAB-550', name: 'Waarschuwingslabel', qty: 100, location: 'PK-01-01', unit: 'rol' },
+                { id: 'TAPE-77', name: 'Verpakkingstape 66m', qty: 30, location: 'PK-01-02', unit: 'rol' },
+                { id: 'FILM-02', name: 'Krimpfolie Transparant', qty: 12, location: 'PK-01-03', unit: 'pak' },
+                { id: 'FILL-09', name: 'Vulmateriaal Bio', qty: 3, location: 'PK-01-04', unit: 'zak' },
+                { id: 'STRAP-44', name: 'Omsnoeringsband 16mm', qty: 2, location: 'PK-03-02', unit: 'rol' },
+                { id: 'BUCK-44', name: 'Omsnoeringsgesp', qty: 200, location: 'PK-03-04', unit: 'st' },
+                { id: 'CART-33', name: 'Verzendkarren', qty: 2, location: 'DOCK-02', unit: 'st' },
+                { id: 'WRAP-88', name: 'Stretchwrap Machine Rol', qty: 4, location: 'DOCK-04', unit: 'rol' },
             ],
             'ORD-2025-889': [
                 { id: 'BAT-778', name: 'Tractiebatterij 48V', qty: 1, location: 'BATT-01', unit: 'st' },
@@ -169,8 +177,11 @@
 
         // --- 2. STATE MANAGEMENT ---
         function setState(updates) {
+            if ('pickItems' in updates || 'pickSearchTerm' in updates || 'pickSortOption' in updates) {
+                pickListCache = { key: '', items: [], source: null };
+            }
             state = { ...state, ...updates };
-            render(); 
+            render();
         }
 
         // --- 3. UI COMPONENTS ---
@@ -240,6 +251,32 @@
             return sorted;
         };
 
+        const prepareOrderLines = (lines = []) =>
+            lines.map((line) => ({
+                ...line,
+                searchIndex: `${line.name || ''} ${line.id || ''} ${line.location || ''}`.toLowerCase(),
+            }));
+
+        let pickListCache = { key: '', items: [], source: null };
+
+        const getFilteredPickItems = () => {
+            const sourceItems = Array.isArray(state.pickItems) ? state.pickItems : [];
+            const searchTerm = (state.pickSearchTerm || '').trim().toLowerCase();
+            const cacheKey = `${state.pickSortOption}|${searchTerm}|${sourceItems.length}`;
+
+            if (pickListCache.key === cacheKey && pickListCache.source === sourceItems) {
+                return pickListCache.items;
+            }
+
+            const filteredItems = searchTerm
+                ? sourceItems.filter((item) => (item.searchIndex || '').includes(searchTerm))
+                : sourceItems;
+
+            const sortedItems = sortPickItems(filteredItems, state.pickSortOption);
+            pickListCache = { key: cacheKey, items: sortedItems, source: sourceItems };
+            return sortedItems;
+        };
+
         const sortOrders = (orders) => {
             const sorted = [...orders];
             sorted.sort((a, b) => {
@@ -296,7 +333,7 @@
             });
 
             try {
-                const lines = await fetchOrderLines(orderId);
+                const lines = prepareOrderLines(await fetchOrderLines(orderId));
 
                 const orderIndex = MOCK_ORDERS.findIndex(o => o.id === orderId);
                 const updatedOrder = orderIndex !== -1
@@ -344,7 +381,7 @@
 
                 await Promise.all(MOCK_ORDERS.map(async (order) => {
                     try {
-                        const lines = await fetchOrderLines(order.id);
+                        const lines = prepareOrderLines(await fetchOrderLines(order.id));
                         initializedOrderLineMap[order.id] = lines;
                         initializedOrderLineState[order.id] = {
                             totalLines: lines.length,
@@ -565,14 +602,7 @@
                 );
             } else {
                 const searchTerm = (state.pickSearchTerm || '').trim().toLowerCase();
-                const filteredItems = searchTerm
-                    ? state.pickItems.filter((item) => {
-                        const target = `${item.name || ''} ${item.id || ''} ${item.location || ''}`.toLowerCase();
-                        return target.includes(searchTerm);
-                    })
-                    : state.pickItems;
-
-                const sortedItems = sortPickItems(filteredItems, state.pickSortOption);
+                const sortedItems = getFilteredPickItems();
 
                 if (sortedItems.length === 0) {
                     itemsHtml = GlassCard(
