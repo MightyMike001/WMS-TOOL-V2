@@ -55,6 +55,7 @@
 
     <script type="module">
         import { getOrderLineCountsForOrder as deriveOrderLineCounts } from './orderLogic.js';
+        import { findMatchingItems, normalizeScanCode } from './scanUtils.js';
 
         // --- 1. DATA & STATE ---
         // Let op: In een echte app zouden MOCK_ORDERS en de bijbehorende orderregels uit een database komen.
@@ -84,6 +85,8 @@
                 { id: 'SKU-8812', name: 'O-Ring 12mm', qty: 50, location: 'Z-01-99', unit: 'zak' },
                 { id: 'PAL-200', name: 'Europallet 120x80', qty: 10, location: 'DOCK-04', unit: 'stk' },
                 { id: 'BOX-10', name: 'Verzenddoos L', qty: 25, location: 'PK-02-01', unit: 'stk' },
+                { id: 'SKU-0092', name: 'Sensorpakket Pro', qty: 4, location: 'PK-02-009', unit: 'set' },
+                { id: 'SKU-0981', name: 'Kabelboom Compact', qty: 6, location: 'PK-02-010', unit: 'st' },
             ],
             'ORD-2025-889': [
                 { id: 'BAT-778', name: 'Tractiebatterij 48V', qty: 1, location: 'BATT-01', unit: 'st' },
@@ -822,7 +825,7 @@
             loadOrderLines(order.id);
         };
         window.togglePickItem = (id) => { const s = new Set(state.pickedItems); if(s.has(id))s.delete(id);else s.add(id); setState({ pickedItems: s }); };
-        window.setManualScanInput = (value) => { setState({ manualScanInput: value.toUpperCase() }); };
+        window.setManualScanInput = (value) => { setState({ manualScanInput: value }); };
         window.submitManualScan = () => {
             const code = state.manualScanInput.trim();
             if (!code) return;
@@ -834,16 +837,10 @@
             }, 0);
         };
 
-        function normalizeScanCode(rawCode) {
-            return String(rawCode || '')
-                .trim()
-                .replace(/\s+/g, '')
-                .toUpperCase();
-        }
-
         function processPickingScan(rawCode) {
-            const normalized = normalizeScanCode(rawCode);
-            if (!normalized) {
+            const { matchedItems, matchedBy, normalizedCode } = findMatchingItems(rawCode, state.pickItems || []);
+
+            if (!normalizedCode) {
                 return;
             }
 
@@ -853,13 +850,6 @@
                 setState({ scanFeedback: { status: 'warning', message: 'Geen picklijst geladen voor deze order.' } });
                 return;
             }
-
-            const matchesById = pickList.filter((i) => i.id.toUpperCase() === normalized);
-            const matchesByLocation = matchesById.length === 0
-                ? pickList.filter((i) => i.location.toUpperCase() === normalized)
-                : [];
-
-            const matchedItems = matchesById.length > 0 ? matchesById : matchesByLocation;
 
             if (matchedItems.length > 0) {
                 const updatedSet = new Set(state.pickedItems);
@@ -875,7 +865,9 @@
                     }
                 });
 
-                const locationContext = matchesByLocation.length > 0 ? `locatie ${normalized}` : matchedItems.map(i => i.id).join(', ');
+                const locationContext = matchedBy === 'location'
+                    ? `Locatie ${matchedItems[0].location}`
+                    : `SKU ${matchedItems.map(i => i.id).join(', ')}`;
                 const actionMessage = newlyPicked.length > 0
                     ? `${locationContext}: ${newlyPicked.length} ${newlyPicked.length === 1 ? 'item' : 'items'} toegevoegd aan selectie`
                     : `${locationContext} was al geselecteerd`;
@@ -889,7 +881,10 @@
                 });
             } else {
                 setState({
-                    scanFeedback: { status: 'warning', message: `${normalized || 'Onbekende code'} niet gevonden in picklijst.` }
+                    scanFeedback: {
+                        status: 'warning',
+                        message: `Code ${normalizedCode} hoort niet bij de actieve picklijst. Controleer SKU of locatie en probeer opnieuw.`
+                    }
                 });
             }
         }
