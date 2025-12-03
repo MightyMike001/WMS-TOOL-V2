@@ -55,8 +55,8 @@
 
     <script>
         // --- 1. DATA & STATE ---
-        // Let op: In een echte app zouden MOCK_ORDERS en MOCK_PICK_ITEMS uit een database komen.
-        // We verwijderen hier items direct uit de MOCK_PICK_ITEMS array om de 'rest' te simuleren.
+        // Let op: In een echte app zouden MOCK_ORDERS en de bijbehorende orderregels uit een database komen.
+        // Voor nu gebruiken we een mapping van mock orderregels en cachen we responses zodat elke order zijn eigen picklijst behoudt.
         let MOCK_ORDERS = [
             { id: 'ORD-2025-881', priority: 'high', createdAt: '2025-02-15T07:45:00Z', items: 4, totalItems: 4, type: 'replenishment', destination: 'WS-PACK-01', status: 'pending' },
             { id: 'ORD-2025-882', priority: 'normal', createdAt: '2025-02-16T09:10:00Z', items: 12, totalItems: 12, type: 'outbound', destination: 'DOCK-04', status: 'pending' },
@@ -70,20 +70,59 @@
 
         let ARCHIVED_ORDERS = [];
 
-        let MOCK_PICK_ITEMS = [
-            { id: 'SKU-9901', name: 'Hydrauliek Pomp V2', qty: 1, location: 'A-12-01', unit: 'st' },
-            { id: 'SKU-9902', name: 'Hydrauliek Pomp V2', qty: 1, location: 'A-12-02', unit: 'st' },
-            { id: 'SKU-2210', name: 'Linde Remblok Set', qty: 5, location: 'B-04-01', unit: 'doos' },
-            { id: 'SKU-8812', name: 'O-Ring 12mm', qty: 100, location: 'Z-01-99', unit: 'zak' },
-            { id: 'TRUCK-99', name: 'E20 Chassis', qty: 1, location: 'PARK-01', unit: 'st' },
-        ];
+        const MOCK_ORDER_LINES = {
+            'ORD-2025-881': [
+                { id: 'SKU-9901', name: 'Hydrauliek Pomp V2', qty: 1, location: 'A-12-01', unit: 'st' },
+                { id: 'SKU-2210', name: 'Linde Remblok Set', qty: 5, location: 'B-04-01', unit: 'doos' },
+                { id: 'SKU-8812', name: 'O-Ring 12mm', qty: 100, location: 'Z-01-99', unit: 'zak' },
+                { id: 'TRUCK-99', name: 'E20 Chassis', qty: 1, location: 'PARK-01', unit: 'st' },
+            ],
+            'ORD-2025-882': [
+                { id: 'SKU-9902', name: 'Hydrauliek Pomp V3', qty: 2, location: 'A-12-02', unit: 'st' },
+                { id: 'SKU-8812', name: 'O-Ring 12mm', qty: 50, location: 'Z-01-99', unit: 'zak' },
+                { id: 'PAL-200', name: 'Europallet 120x80', qty: 10, location: 'DOCK-04', unit: 'stk' },
+                { id: 'BOX-10', name: 'Verzenddoos L', qty: 25, location: 'PK-02-01', unit: 'stk' },
+            ],
+            'ORD-2025-889': [
+                { id: 'BAT-778', name: 'Tractiebatterij 48V', qty: 1, location: 'BATT-01', unit: 'st' },
+            ],
+            'ORD-2025-890': [
+                { id: 'OIL-19', name: 'Hydraulische olie 19L', qty: 4, location: 'OIL-02', unit: 'vat' },
+                { id: 'FORK-02', name: 'Vorkenset 1200mm', qty: 2, location: 'FORK-01', unit: 'set' },
+                { id: 'LIGHT-77', name: 'Werklamp LED', qty: 3, location: 'EL-09-03', unit: 'st' },
+                { id: 'CABLE-12', name: 'Laadkabel 5m', qty: 4, location: 'EL-02-01', unit: 'st' },
+                { id: 'HARN-44', name: 'Veiligheidsharnas', qty: 1, location: 'SAF-03', unit: 'st' },
+            ],
+            'ORD-2025-891': [
+                { id: 'FILTER-01', name: 'Luchtfilter set', qty: 2, location: 'FIL-01-01', unit: 'st' },
+                { id: 'BELT-90', name: 'V-snaar 900mm', qty: 1, location: 'DRIVE-04', unit: 'st' },
+            ],
+            'ORD-2025-892': [
+                { id: 'SEAL-22', name: 'Asafdichting 22mm', qty: 6, location: 'SEAL-02-02', unit: 'st' },
+                { id: 'GLV-10', name: 'Nitril handschoenen M', qty: 2, location: 'SAF-05-02', unit: 'doos' },
+                { id: 'BOLT-88', name: 'Bout M12', qty: 200, location: 'FAST-10', unit: 'st' },
+            ],
+            'ORD-2025-893': [
+                { id: 'CHARG-03', name: 'Lader 48V', qty: 1, location: 'CHRG-01', unit: 'st' },
+            ],
+            'ORD-2025-894': [
+                { id: 'TIRE-20', name: 'Volrubberband 20x8', qty: 2, location: 'TYR-04', unit: 'st' },
+                { id: 'BRAKE-12', name: 'Remcilinder set', qty: 1, location: 'BRK-02-01', unit: 'set' },
+                { id: 'MIR-03', name: 'Panoramische spiegel', qty: 1, location: 'CAB-07', unit: 'st' },
+            ],
+        };
+
+        const ORDER_LINE_CACHE = {};
 
         let state = {
             view: 'login',
             user: null,
             darkMode: true,
             activeOrder: null,
+            pickItems: [],
             pickedItems: new Set(),
+            isLoadingOrderLines: false,
+            orderLineError: null,
             scanStep: 0,
             scannedData: { truck: '', location: '' },
             scannerContext: null,
@@ -163,8 +202,68 @@
             return sorted;
         };
 
+        async function fetchOrderLines(orderId) {
+            const endpoint = `/api/orders/${orderId}/lines`;
+
+            try {
+                const response = await fetch(endpoint, { cache: 'no-store' });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    if (Array.isArray(data) && data.length > 0) {
+                        return data;
+                    }
+                }
+
+                throw new Error('Geen orderregels gevonden in backend respons.');
+            } catch (error) {
+                console.warn('Orderregels ophalen mislukt, val terug op mock data.', error);
+
+                if (ORDER_LINE_CACHE[orderId]) {
+                    return ORDER_LINE_CACHE[orderId];
+                }
+
+                if (MOCK_ORDER_LINES[orderId]) {
+                    return MOCK_ORDER_LINES[orderId];
+                }
+
+                throw new Error('Geen orderregels gevonden voor deze order.');
+            }
+        }
+
+        async function loadOrderLines(orderId) {
+            setState({
+                isLoadingOrderLines: true,
+                orderLineError: null,
+                pickItems: [],
+                pickedItems: new Set(),
+                scanFeedback: null
+            });
+
+            try {
+                const lines = await fetchOrderLines(orderId);
+                ORDER_LINE_CACHE[orderId] = lines;
+
+                const updatedOrder = state.activeOrder && state.activeOrder.id === orderId
+                    ? { ...state.activeOrder, items: lines.length, totalItems: lines.length }
+                    : state.activeOrder;
+
+                setState({
+                    pickItems: lines,
+                    isLoadingOrderLines: false,
+                    activeOrder: updatedOrder,
+                });
+            } catch (error) {
+                setState({
+                    isLoadingOrderLines: false,
+                    orderLineError: error.message || 'Geen orderregels gevonden voor deze order.',
+                    pickItems: [],
+                });
+            }
+        }
+
         const getOrderLineCounts = () => {
-            const totalLines = MOCK_PICK_ITEMS.length;
+            const totalLines = state.pickItems?.length || state.activeOrder?.items || 0;
             const pickedCount = state.pickedItems?.size || 0;
             const remainingLines = Math.max(totalLines - pickedCount, 0);
 
@@ -329,34 +428,65 @@
             // --- EINDE LOGICA ---
 
 
-            const itemsHtml = MOCK_PICK_ITEMS.map(item => {
-                const isSelected = state.pickedItems.has(item.id);
-                const borderClass = isSelected 
-                    ? (state.darkMode ? 'border-emerald-500/50 bg-emerald-500/10' : 'border-emerald-500 bg-emerald-50')
-                    : '';
-                const checkBg = isSelected 
-                    ? 'bg-emerald-500 text-white border-emerald-500' 
-                    : (state.darkMode ? 'bg-white/5 border-white/10' : 'bg-slate-50 border-slate-200');
+            let itemsHtml = '';
 
-                // Padding verlaagd en margins aangepast voor compactere lijst
-                return GlassCard(`
-                    <div class="flex items-stretch min-h-[4rem] -m-3">
-                        <div class="w-12 flex items-center justify-center border-r transition-colors ${checkBg}">
-                            <i data-lucide="${isSelected ? 'check-square' : 'square'}" width="20" class="${isSelected ? 'text-white' : (state.darkMode ? 'text-white/60' : 'text-slate-400')}"></i>
-                        </div>
-                        <div class="flex-1 p-3 flex flex-col justify-center">
-                            <div class="flex justify-between items-start">
-                                <span class="text-[10px] font-mono px-1.5 py-0.5 rounded mb-0.5 inline-block ${state.darkMode ? 'bg-white/10' : 'bg-slate-200 text-slate-700'}">
-                                    ${item.location}
-                                </span>
-                                <span class="${t.textMain} font-bold text-base">${item.qty} <span class="text-[10px] font-normal opacity-60">${item.unit}</span></span>
+            if (state.isLoadingOrderLines) {
+                itemsHtml = GlassCard(
+                    `<div class="flex items-center gap-2 text-sm ${t.textSec}">
+                        <i data-lucide="loader-2" class="animate-spin" width="16"></i>
+                        Orderregels laden...
+                    </div>`,
+                    null,
+                    'border-dashed border border-white/10'
+                );
+            } else if (state.orderLineError) {
+                itemsHtml = GlassCard(
+                    `<div class="flex flex-col gap-2 ${t.textSec}">
+                        <div class="flex items-center gap-2 text-amber-400"><i data-lucide="alert-triangle" width="16"></i>${state.orderLineError}</div>
+                        <p class="text-xs">Probeer te vernieuwen of neem contact op met de planner.</p>
+                    </div>`,
+                    null,
+                    'border border-amber-500/40 bg-amber-500/10'
+                );
+            } else if (!state.pickItems || state.pickItems.length === 0) {
+                itemsHtml = GlassCard(
+                    `<div class="flex items-center gap-2 text-sm ${t.textSec}">
+                        <i data-lucide="inbox" width="16"></i>
+                        Geen orderregels gevonden voor deze order.
+                    </div>`,
+                    null,
+                    'border-dashed border border-white/10'
+                );
+            } else {
+                itemsHtml = state.pickItems.map(item => {
+                    const isSelected = state.pickedItems.has(item.id);
+                    const borderClass = isSelected
+                        ? (state.darkMode ? 'border-emerald-500/50 bg-emerald-500/10' : 'border-emerald-500 bg-emerald-50')
+                        : '';
+                    const checkBg = isSelected
+                        ? 'bg-emerald-500 text-white border-emerald-500'
+                        : (state.darkMode ? 'bg-white/5 border-white/10' : 'bg-slate-50 border-slate-200');
+
+                    // Padding verlaagd en margins aangepast voor compactere lijst
+                    return GlassCard(`
+                        <div class="flex items-stretch min-h-[4rem] -m-3">
+                            <div class="w-12 flex items-center justify-center border-r transition-colors ${checkBg}">
+                                <i data-lucide="${isSelected ? 'check-square' : 'square'}" width="20" class="${isSelected ? 'text-white' : (state.darkMode ? 'text-white/60' : 'text-slate-400')}"></i>
                             </div>
-                            <h4 class="${t.textMain} font-bold text-sm leading-tight truncate">${item.name}</h4>
-                            <div class="${t.textSec} text-[10px] font-mono mt-0.5">${item.id}</div>
+                            <div class="flex-1 p-3 flex flex-col justify-center">
+                                <div class="flex justify-between items-start">
+                                    <span class="text-[10px] font-mono px-1.5 py-0.5 rounded mb-0.5 inline-block ${state.darkMode ? 'bg-white/10' : 'bg-slate-200 text-slate-700'}">
+                                        ${item.location}
+                                    </span>
+                                    <span class="${t.textMain} font-bold text-base">${item.qty} <span class="text-[10px] font-normal opacity-60">${item.unit}</span></span>
+                                </div>
+                                <h4 class="${t.textMain} font-bold text-sm leading-tight truncate">${item.name}</h4>
+                                <div class="${t.textSec} text-[10px] font-mono mt-0.5">${item.id}</div>
+                            </div>
                         </div>
-                    </div>
-                `, `togglePickItem('${item.id}')`, `transition-all duration-200 ${borderClass} !p-0`);
-            }).join('<div class="h-2"></div>');
+                    `, `togglePickItem('${item.id}')`, `transition-all duration-200 ${borderClass} !p-0`);
+                }).join('<div class="h-2"></div>');
+            }
 
             return `
                  <div class="h-full flex flex-col px-4 pt-4 pb-2">
@@ -391,7 +521,7 @@
                     <div class="mt-2 pt-2 border-t ${state.darkMode ? 'border-white/10' : 'border-slate-200'}">
                         <div class="flex justify-between items-center mb-2 px-1">
                             <span class="${t.textSec} text-xs">Geselecteerd</span>
-                            <span class="${t.textMain} font-bold text-lg">${state.pickedItems.size} <span class="text-xs font-normal opacity-50">/ ${MOCK_PICK_ITEMS.length}</span></span>
+                            <span class="${t.textMain} font-bold text-lg">${state.pickedItems.size} <span class="text-xs font-normal opacity-50">/ ${state.pickItems.length}</span></span>
                         </div>
                         ${Button(state.pickedItems.size > 0 ? `Verplaats ${state.pickedItems.size} Items` : "Selecteer Items", 'openConfirmationModal()', state.pickedItems.size > 0 ? 'success' : 'secondary', 'arrow-right', state.pickedItems.size === 0)}
                     </div>
@@ -513,7 +643,7 @@
             
             const t = getTheme();
             const pickedCount = state.pickedItems.size;
-            const remainingCount = MOCK_PICK_ITEMS.length - pickedCount;
+            const remainingCount = Math.max((state.pickItems.length || 0) - pickedCount, 0);
 
             return `
                 <div id="confirmation-modal" class="fixed inset-0 z-50 flex items-center justify-center p-6 bg-black/50 backdrop-blur-sm modal-enter modal-enter-active">
@@ -550,7 +680,21 @@
                 setState({ sortOption: option });
             }
         };
-        window.openOrder = (id) => { const o = MOCK_ORDERS.find(x=>x.id===id); setState({ activeOrder: o, view: 'picking', pickedItems: new Set(), isEditingDestination: false, scanFeedback: null }); };
+        window.openOrder = (id) => {
+            const order = MOCK_ORDERS.find(x => x.id === id);
+            if (!order) return;
+
+            setState({
+                activeOrder: order,
+                view: 'picking',
+                pickedItems: new Set(),
+                isEditingDestination: false,
+                scanFeedback: null,
+                orderLineError: null,
+            });
+
+            loadOrderLines(order.id);
+        };
         window.togglePickItem = (id) => { const s = new Set(state.pickedItems); if(s.has(id))s.delete(id);else s.add(id); setState({ pickedItems: s }); };
         window.setManualScanInput = (value) => { setState({ manualScanInput: value.toUpperCase() }); };
         window.submitManualScan = () => {
@@ -577,9 +721,16 @@
                 return;
             }
 
-            const matchesById = MOCK_PICK_ITEMS.filter((i) => i.id.toUpperCase() === normalized);
+            const pickList = state.pickItems || [];
+
+            if (pickList.length === 0) {
+                setState({ scanFeedback: { status: 'warning', message: 'Geen picklijst geladen voor deze order.' } });
+                return;
+            }
+
+            const matchesById = pickList.filter((i) => i.id.toUpperCase() === normalized);
             const matchesByLocation = matchesById.length === 0
-                ? MOCK_PICK_ITEMS.filter((i) => i.location.toUpperCase() === normalized)
+                ? pickList.filter((i) => i.location.toUpperCase() === normalized)
                 : [];
 
             const matchedItems = matchesById.length > 0 ? matchesById : matchesByLocation;
@@ -629,16 +780,14 @@
         };
 
         window.executePicking = () => {
-            const itemsToKeep = MOCK_PICK_ITEMS.filter(item => !state.pickedItems.has(item.id));
+            const currentLines = state.pickItems || [];
+            const itemsToKeep = currentLines.filter(item => !state.pickedItems.has(item.id));
             const count = state.pickedItems.size;
 
-            const remainingItems = Math.max((state.activeOrder?.items || 0) - count, 0);
-            const totalItems = state.activeOrder?.totalItems || state.activeOrder?.items || 0;
+            const totalItems = currentLines.length;
+            const remainingItems = Math.max(totalItems - count, 0);
             const newStatus = remainingItems === 0 ? 'completed' : (remainingItems < totalItems ? 'partial' : 'pending');
-            const updatedOrder = state.activeOrder ? { ...state.activeOrder, items: remainingItems, status: newStatus } : null;
-
-            // Simuleer backend update door de MOCK array te vervangen
-            MOCK_PICK_ITEMS = itemsToKeep;
+            const updatedOrder = state.activeOrder ? { ...state.activeOrder, items: remainingItems, totalItems: totalItems, status: newStatus } : null;
 
             if (updatedOrder) {
                 const orderIndex = MOCK_ORDERS.findIndex(o => o.id === updatedOrder.id);
@@ -653,12 +802,17 @@
                 }
             }
 
+            if (updatedOrder?.id) {
+                ORDER_LINE_CACHE[updatedOrder.id] = itemsToKeep;
+            }
+
             const newPicks = Math.min(60, Math.max(30, state.stats.picksPerHour + (Math.random() > 0.5 ? 1 : -1)));
 
             setState({
-                view: MOCK_PICK_ITEMS.length > 0 ? 'picking' : 'dashboard',
+                view: itemsToKeep.length > 0 ? 'picking' : 'dashboard',
                 activeOrder: newStatus === 'completed' ? null : updatedOrder,
                 pickedItems: new Set(),
+                pickItems: itemsToKeep,
                 showConfirmationModal: false,
                 stats: {
                     ...state.stats,
@@ -667,7 +821,7 @@
                 }
             });
             // We blijven op de picking pagina als er nog items zijn (Partial Pick), anders terug naar dashboard
-            if (MOCK_PICK_ITEMS.length === 0) {
+            if (itemsToKeep.length === 0) {
                 setTimeout(() => alert(`Order ${state.activeOrder?.id || ''} voltooid!`), 100);
             }
         };
