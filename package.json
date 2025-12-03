@@ -1,0 +1,8 @@
+{
+  "name": "wms-tool-v2",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "test": "node --test"
+  }
+}
