@@ -57,16 +57,18 @@
         // --- 1. DATA & STATE ---
         // Let op: In een echte app zouden MOCK_ORDERS en MOCK_PICK_ITEMS uit een database komen.
         // We verwijderen hier items direct uit de MOCK_PICK_ITEMS array om de 'rest' te simuleren.
-        const MOCK_ORDERS = [
-            { id: 'ORD-2025-881', priority: 'high', createdAt: '2025-02-15T07:45:00Z', items: 4, type: 'replenishment', destination: 'WS-PACK-01', status: 'pending' },
-            { id: 'ORD-2025-882', priority: 'normal', createdAt: '2025-02-16T09:10:00Z', items: 12, type: 'outbound', destination: 'DOCK-04', status: 'pending' },
-            { id: 'ORD-2025-889', priority: 'low', createdAt: '2025-02-14T14:20:00Z', items: 1, type: 'internal', destination: 'LOC-Z-99', status: 'pending' },
-            { id: 'ORD-2025-890', priority: 'normal', createdAt: '2025-02-16T11:05:00Z', items: 8, destination: 'A-14-02', status: 'pending' },
-            { id: 'ORD-2025-891', priority: 'low', createdAt: '2025-02-16T06:35:00Z', items: 2, destination: 'B-02-11', status: 'pending' },
-            { id: 'ORD-2025-892', priority: 'normal', createdAt: '2025-02-15T17:30:00Z', items: 5, destination: 'C-12-01', status: 'pending' },
-            { id: 'ORD-2025-893', priority: 'low', createdAt: '2025-02-13T08:00:00Z', items: 1, destination: 'A-01-01', status: 'pending' },
-            { id: 'ORD-2025-894', priority: 'high', createdAt: '2025-02-16T05:50:00Z', items: 3, destination: 'B-11-05', status: 'pending' },
+        let MOCK_ORDERS = [
+            { id: 'ORD-2025-881', priority: 'high', createdAt: '2025-02-15T07:45:00Z', items: 4, totalItems: 4, type: 'replenishment', destination: 'WS-PACK-01', status: 'pending' },
+            { id: 'ORD-2025-882', priority: 'normal', createdAt: '2025-02-16T09:10:00Z', items: 12, totalItems: 12, type: 'outbound', destination: 'DOCK-04', status: 'pending' },
+            { id: 'ORD-2025-889', priority: 'low', createdAt: '2025-02-14T14:20:00Z', items: 1, totalItems: 1, type: 'internal', destination: 'LOC-Z-99', status: 'pending' },
+            { id: 'ORD-2025-890', priority: 'normal', createdAt: '2025-02-16T11:05:00Z', items: 8, totalItems: 8, destination: 'A-14-02', status: 'pending' },
+            { id: 'ORD-2025-891', priority: 'low', createdAt: '2025-02-16T06:35:00Z', items: 2, totalItems: 2, destination: 'B-02-11', status: 'pending' },
+            { id: 'ORD-2025-892', priority: 'normal', createdAt: '2025-02-15T17:30:00Z', items: 5, totalItems: 5, destination: 'C-12-01', status: 'pending' },
+            { id: 'ORD-2025-893', priority: 'low', createdAt: '2025-02-13T08:00:00Z', items: 1, totalItems: 1, destination: 'A-01-01', status: 'pending' },
+            { id: 'ORD-2025-894', priority: 'high', createdAt: '2025-02-16T05:50:00Z', items: 3, totalItems: 3, destination: 'B-11-05', status: 'pending' },
         ];
+
+        let ARCHIVED_ORDERS = [];
 
         let MOCK_PICK_ITEMS = [
             { id: 'SKU-9901', name: 'Hydrauliek Pomp V2', qty: 1, location: 'A-12-01', unit: 'st' },
@@ -133,6 +135,12 @@
             high: { label: 'Urgent', chip: 'bg-red-500/15 text-red-200 border border-red-500/30', icon: 'bg-red-500/20 text-red-500' },
             normal: { label: 'Standaard', chip: 'bg-blue-500/15 text-blue-200 border border-blue-500/30', icon: 'bg-blue-500/20 text-blue-500' },
             low: { label: 'Laag', chip: 'bg-amber-500/15 text-amber-200 border border-amber-500/30', icon: 'bg-amber-500/20 text-amber-500' },
+        };
+
+        const statusStyles = {
+            pending: { label: 'Open', chip: 'bg-white/10 text-white/80 border border-white/20' },
+            partial: { label: 'Gedeeltelijk', chip: 'bg-yellow-500/15 text-yellow-200 border border-yellow-500/30' },
+            completed: { label: 'Voltooid', chip: 'bg-emerald-500/15 text-emerald-200 border border-emerald-500/30' },
         };
 
         const priorityRank = { high: 0, normal: 1, low: 2 };
@@ -259,6 +267,7 @@
                                         <div class="flex items-center gap-2 mb-1">
                                             <h4 class="${t.textMain} font-bold text-sm truncate">${order.id}</h4>
                                             <span class="text-[10px] uppercase tracking-widest px-2 py-1 rounded-full font-bold ${priorityStyles[order.priority]?.chip}">${priorityStyles[order.priority]?.label || 'N.v.t.'}</span>
+                                            <span class="text-[10px] uppercase tracking-widest px-2 py-1 rounded-full font-bold ${statusStyles[order.status]?.chip || 'bg-white/10 text-white/80 border border-white/20'}">${statusStyles[order.status]?.label || 'Open'}</span>
                                         </div>
                                         <div class="flex items-center gap-2 ${t.textSec} text-xs mt-0.5 flex-wrap">
                                             <div class="flex items-center gap-1">
@@ -268,7 +277,7 @@
                                             <span class="hidden sm:inline">•</span>
                                             <span class="whitespace-nowrap flex items-center gap-1"><i data-lucide="clock" width="12"></i>${new Date(order.createdAt).toLocaleString('nl-NL', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}</span>
                                             <span class="hidden sm:inline">•</span>
-                                            <span class="whitespace-nowrap flex items-center gap-1"><i data-lucide="list" width="12"></i>${order.items} regels</span>
+                                            <span class="whitespace-nowrap flex items-center gap-1"><i data-lucide="list" width="12"></i>Nog ${order.items} / ${order.totalItems || order.items} regels</span>
                                         </div>
                                     </div>
                                     <div class="ml-auto shrink-0">
@@ -529,20 +538,33 @@
         window.executePicking = () => {
             const itemsToKeep = MOCK_PICK_ITEMS.filter(item => !state.pickedItems.has(item.id));
             const count = state.pickedItems.size;
-            
-            // Simuleer backend update door de MOCK array te vervangen
-            MOCK_PICK_ITEMS = itemsToKeep; 
 
-            const newPicks = Math.min(60, Math.max(30, state.stats.picksPerHour + (Math.random() > 0.5 ? 1 : -1)));
-            
-            // Als er geen items meer over zijn, markeer order als voltooid (in een echte app)
-            if (MOCK_PICK_ITEMS.length === 0) {
-                // Hier zou de order status in MOCK_ORDERS worden gewijzigd naar 'completed'
+            const remainingItems = Math.max((state.activeOrder?.items || 0) - count, 0);
+            const totalItems = state.activeOrder?.totalItems || state.activeOrder?.items || 0;
+            const newStatus = remainingItems === 0 ? 'completed' : (remainingItems < totalItems ? 'partial' : 'pending');
+            const updatedOrder = state.activeOrder ? { ...state.activeOrder, items: remainingItems, status: newStatus } : null;
+
+            // Simuleer backend update door de MOCK array te vervangen
+            MOCK_PICK_ITEMS = itemsToKeep;
+
+            if (updatedOrder) {
+                const orderIndex = MOCK_ORDERS.findIndex(o => o.id === updatedOrder.id);
+
+                if (newStatus === 'completed') {
+                    if (orderIndex !== -1) {
+                        MOCK_ORDERS.splice(orderIndex, 1);
+                    }
+                    ARCHIVED_ORDERS.push(updatedOrder);
+                } else if (orderIndex !== -1) {
+                    MOCK_ORDERS[orderIndex] = updatedOrder;
+                }
             }
 
-            setState({ 
-                view: MOCK_PICK_ITEMS.length > 0 ? 'picking' : 'dashboard', 
-                activeOrder: MOCK_PICK_ITEMS.length > 0 ? state.activeOrder : null,
+            const newPicks = Math.min(60, Math.max(30, state.stats.picksPerHour + (Math.random() > 0.5 ? 1 : -1)));
+
+            setState({
+                view: MOCK_PICK_ITEMS.length > 0 ? 'picking' : 'dashboard',
+                activeOrder: newStatus === 'completed' ? null : updatedOrder,
                 pickedItems: new Set(),
                 showConfirmationModal: false,
                 stats: {
@@ -550,10 +572,10 @@
                     picksPerHour: newPicks,
                     totalPicksShift: state.stats.totalPicksShift + count
                 }
-            }); 
+            });
             // We blijven op de picking pagina als er nog items zijn (Partial Pick), anders terug naar dashboard
             if (MOCK_PICK_ITEMS.length === 0) {
-                setTimeout(() => alert(`Order ${state.activeOrder.id} voltooid!`), 100);
+                setTimeout(() => alert(`Order ${state.activeOrder?.id || ''} voltooid!`), 100);
             }
         };
         // --- EINDE MODAL HANDLERS ---
