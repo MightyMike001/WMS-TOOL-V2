@@ -86,6 +86,9 @@
             pickedItems: new Set(),
             scanStep: 0,
             scannedData: { truck: '', location: '' },
+            scannerContext: null,
+            manualScanInput: '',
+            scanFeedback: null,
             loginInput: '',
             showScanner: false,
             html5QrCode: null,
@@ -357,6 +360,23 @@
                             ${destinationBlock}
                         </div>
                     </div>
+                    ${GlassCard(`
+                        <div class="flex flex-col gap-3">
+                            <div class="flex items-center justify-between gap-3">
+                                <div class="flex-1">
+                                    <p class="${t.textSec} text-[10px] uppercase tracking-[0.2em] font-semibold mb-2">Barcode / QR-scan</p>
+                                    <div class="flex gap-2 items-center">
+                                        <input id="manual-scan-input" type="text" value="${state.manualScanInput}" oninput="setManualScanInput(this.value)" onkeydown="if(event.key==='Enter'){submitManualScan();}" placeholder="Scan of typ code" class="flex-1 bg-transparent border rounded-xl px-3 py-2 text-sm ${state.darkMode ? 'border-white/20 text-white placeholder:text-white/30 focus:border-red-500' : 'border-slate-200 text-slate-900 placeholder:text-slate-400 focus:border-red-500'} outline-none" />
+                                        <button onclick="submitManualScan()" class="px-4 py-2 rounded-xl text-sm font-semibold ${state.darkMode ? 'bg-red-600 text-white hover:bg-red-500' : 'bg-red-600 text-white hover:bg-red-500'} transition-colors">Bevestig</button>
+                                    </div>
+                                </div>
+                                <button onclick="openScanner('picking')" class="p-3 rounded-xl border ${state.darkMode ? 'border-white/10 bg-white/5 text-white hover:bg-white/10' : 'border-slate-200 bg-white text-slate-900 hover:bg-slate-50'} transition-colors shrink-0">
+                                    <i data-lucide="camera" width="18"></i>
+                                </button>
+                            </div>
+                            ${state.scanFeedback ? `<div class="text-xs px-3 py-2 rounded-lg border ${state.scanFeedback.status === 'success' ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-200' : 'bg-amber-500/10 border-amber-500/30 text-amber-200'}">${state.scanFeedback.message}</div>` : ''}
+                        </div>
+                    `, null, 'mb-3')}
                     <div class="p-3 rounded-xl mb-3 text-xs ${state.darkMode ? 'bg-blue-500/10 text-blue-200 border border-blue-500/20' : 'bg-blue-50 text-blue-800 border border-blue-200'}">Selecteer items.</div>
                     <div class="flex-1 overflow-y-auto space-y-2 pr-1 pb-4 no-scrollbar">${itemsHtml}</div>
                     <div class="mt-2 pt-2 border-t ${state.darkMode ? 'border-white/10' : 'border-slate-200'}">
@@ -521,8 +541,42 @@
                 setState({ sortOption: option });
             }
         };
-        window.openOrder = (id) => { const o = MOCK_ORDERS.find(x=>x.id===id); setState({ activeOrder: o, view: 'picking', pickedItems: new Set(), isEditingDestination: false }); };
+        window.openOrder = (id) => { const o = MOCK_ORDERS.find(x=>x.id===id); setState({ activeOrder: o, view: 'picking', pickedItems: new Set(), isEditingDestination: false, scanFeedback: null }); };
         window.togglePickItem = (id) => { const s = new Set(state.pickedItems); if(s.has(id))s.delete(id);else s.add(id); setState({ pickedItems: s }); };
+        window.setManualScanInput = (value) => { setState({ manualScanInput: value.toUpperCase() }); };
+        window.submitManualScan = () => {
+            const code = state.manualScanInput.trim();
+            if (!code) return;
+            processPickingScan(code);
+            setState({ manualScanInput: '' });
+            setTimeout(() => {
+                const input = document.getElementById('manual-scan-input');
+                if (input) input.focus();
+            }, 0);
+        };
+
+        function processPickingScan(rawCode) {
+            const normalized = rawCode.trim().toUpperCase();
+            const item = MOCK_PICK_ITEMS.find((i) => i.id.toUpperCase() === normalized);
+            if (item) {
+                const alreadyPicked = state.pickedItems.has(item.id);
+                const updatedSet = new Set(state.pickedItems);
+                if (!alreadyPicked) {
+                    updatedSet.add(item.id);
+                }
+                setState({
+                    pickedItems: updatedSet,
+                    scanFeedback: {
+                        status: 'success',
+                        message: `${item.id} ${alreadyPicked ? 'was al bevestigd' : 'toegevoegd aan selectie'}`
+                    }
+                });
+            } else {
+                setState({
+                    scanFeedback: { status: 'warning', message: `${normalized || 'Onbekende code'} niet gevonden in picklijst.` }
+                });
+            }
+        }
 
         // --- HANDLERS VOOR MODAL ---
         window.openConfirmationModal = () => {
@@ -626,11 +680,11 @@
 
         // --- REAL CAMERA LOGIC ---
         
-        window.openScanner = () => {
-            setState({ showScanner: true });
+        window.openScanner = (context = null) => {
+            setState({ showScanner: true, scannerContext: context });
             setTimeout(() => {
                 const html5QrCode = new Html5Qrcode("reader");
-                state.html5QrCode = html5QrCode; 
+                state.html5QrCode = html5QrCode;
                 const config = { fps: 10, qrbox: { width: 250, height: 250 } };
                 html5QrCode.start({ facingMode: "environment" }, config, onScanSuccess, onScanFailure)
                 .catch(err => {
@@ -645,13 +699,13 @@
             if (state.html5QrCode) {
                 state.html5QrCode.stop().then(() => {
                     state.html5QrCode.clear();
-                    setState({ showScanner: false, html5QrCode: null });
+                    setState({ showScanner: false, html5QrCode: null, scannerContext: null });
                 }).catch(err => {
                     console.log("Stop failed", err);
-                    setState({ showScanner: false, html5QrCode: null });
+                    setState({ showScanner: false, html5QrCode: null, scannerContext: null });
                 });
             } else {
-                setState({ showScanner: false });
+                setState({ showScanner: false, scannerContext: null });
             }
         };
 
@@ -667,14 +721,16 @@
         function onScanFailure(error) {}
 
         function handleRealScan(result) {
-            setState({ showScanner: false, html5QrCode: null });
-            
-            if(state.view === 'asset-scan') { 
+            setState({ showScanner: false, html5QrCode: null, scannerContext: null });
+
+            if(state.view === 'asset-scan' && state.scannerContext !== 'picking') {
                 if(state.scanStep===0) {
-                    setState({ scannedData:{...state.scannedData, truck: result}, scanStep:1 }); 
+                    setState({ scannedData:{...state.scannedData, truck: result}, scanStep:1 });
                 } else if(state.scanStep===1) {
-                    setState({ scannedData:{...state.scannedData, location: result}, scanStep:2 }); 
+                    setState({ scannedData:{...state.scannedData, location: result}, scanStep:2 });
                 }
+            } else if (state.view === 'picking' || state.scannerContext === 'picking') {
+                processPickingScan(result);
             } else {
                 alert(`Gescand: ${result}`);
             }
