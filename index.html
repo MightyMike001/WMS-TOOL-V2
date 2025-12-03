@@ -163,6 +163,14 @@
             return sorted;
         };
 
+        const getOrderLineCounts = () => {
+            const totalLines = MOCK_PICK_ITEMS.length;
+            const pickedCount = state.pickedItems?.size || 0;
+            const remainingLines = Math.max(totalLines - pickedCount, 0);
+
+            return { remainingLines, totalLines };
+        };
+
         const Button = (label, onClick, variant = 'primary', icon = '', disabled = false) => {
             const variants = {
                 primary: "bg-red-600 text-white shadow-lg shadow-red-900/20 border-red-500 hover:bg-red-500",
@@ -207,6 +215,7 @@
 
         function renderDashboard() {
             const t = getTheme();
+            const lineCounts = getOrderLineCounts();
             const sortedOrders = sortOrders(MOCK_ORDERS);
             const sortLabels = {
                 priority: 'Urgentie',
@@ -280,7 +289,7 @@
                                             <span class="hidden sm:inline">•</span>
                                             <span class="whitespace-nowrap flex items-center gap-1"><i data-lucide="clock" width="12"></i>${new Date(order.createdAt).toLocaleString('nl-NL', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}</span>
                                             <span class="hidden sm:inline">•</span>
-                                            <span class="whitespace-nowrap flex items-center gap-1"><i data-lucide="list" width="12"></i>Nog ${order.items} / ${order.totalItems || order.items} regels</span>
+                                            <span class="whitespace-nowrap flex items-center gap-1"><i data-lucide="list" width="12"></i>Nog ${lineCounts.remainingLines} / ${lineCounts.totalLines} regels</span>
                                         </div>
                                     </div>
                                     <div class="ml-auto shrink-0">
