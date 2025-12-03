@@ -117,6 +117,19 @@
             ],
         };
 
+        const KNOWN_LOCATIONS = (() => {
+            const locations = new Set();
+            MOCK_ORDERS.forEach(order => {
+                if (order.destination) locations.add(order.destination);
+            });
+            Object.values(MOCK_ORDER_LINES).forEach(lines => {
+                lines.forEach(line => {
+                    if (line.location) locations.add(line.location);
+                });
+            });
+            return Array.from(locations).sort();
+        })();
+
         let state = {
             view: 'login',
             user: null,
@@ -144,6 +157,8 @@
             },
             isEditingDestination: false,
             newDestinationInput: '',
+            destinationSuggestions: [],
+            destinationError: null,
             showConfirmationModal: false, // NIEUW: Voor de pick bevestiging
             // Initialisatieflags
             initialOrderLinesLoaded: false,
@@ -486,6 +501,15 @@
                     <input id="destination-input" type="text" value="${state.newDestinationInput || state.activeOrder.destination || ''}" oninput="setNewDestinationInput(this.value)"
                         class="bg-white/10 text-white p-2 rounded-lg font-mono text-xl outline-none focus:ring-2 focus:ring-red-500 transition-all uppercase"
                     />
+                    <p class="text-xs ${t.textSec}">Kies een bekende locatie of selecteer een suggestie.</p>
+                    ${state.destinationError ? `<div class="flex items-center gap-1 text-amber-300 text-sm"><i data-lucide="alert-triangle" width="14"></i>${state.destinationError}</div>` : ''}
+                    <div class="flex flex-wrap gap-2" aria-label="Suggesties voor bestemming">
+                        ${state.destinationSuggestions.length > 0
+                            ? state.destinationSuggestions.map(loc => `
+                                <button onclick="applyDestinationSuggestion('${loc}')" class="px-3 py-1 rounded-full border border-white/20 bg-white/5 hover:bg-white/10 transition text-xs font-mono">${loc}</button>
+                            `).join('')
+                            : `<span class="text-xs text-amber-200">Geen suggesties gevonden.</span>`}
+                    </div>
                     <div class="flex gap-2">
                         ${Button('Opslaan', 'saveDestination()', 'success', 'save', state.newDestinationInput.length < 1)}
                         ${Button('Annuleren', 'toggleEditDestination()', 'secondary', 'x', false)}
@@ -971,15 +995,35 @@
         window.toggleEditDestination = () => {
             const isEditing = state.isEditingDestination;
             if (!isEditing) {
-                setState({ isEditingDestination: true, newDestinationInput: state.activeOrder.destination || '' });
+                const suggestions = KNOWN_LOCATIONS.slice(0, 6);
+                setState({
+                    isEditingDestination: true,
+                    newDestinationInput: state.activeOrder.destination || '',
+                    destinationSuggestions: suggestions,
+                    destinationError: null,
+                });
             } else {
-                setState({ isEditingDestination: false, newDestinationInput: '' });
+                setState({ isEditingDestination: false, newDestinationInput: '', destinationSuggestions: [], destinationError: null });
             }
         };
 
         window.setNewDestinationInput = (value) => {
-            state.newDestinationInput = value.toUpperCase(); 
-            render(); 
+            const normalized = value.toUpperCase();
+            const suggestions = KNOWN_LOCATIONS.filter(loc => loc.includes(normalized)).slice(0, 6);
+            setState({ newDestinationInput: normalized, destinationSuggestions: suggestions, destinationError: null });
+            setTimeout(() => {
+                const input = document.getElementById('destination-input');
+                if (input) {
+                    input.focus();
+                    input.value = state.newDestinationInput;
+                    input.setSelectionRange(input.value.length, input.value.length);
+                }
+            }, 0);
+        };
+
+        window.applyDestinationSuggestion = (location) => {
+            const suggestions = KNOWN_LOCATIONS.filter(loc => loc.includes(location)).slice(0, 6);
+            setState({ newDestinationInput: location, destinationSuggestions: suggestions, destinationError: null });
             setTimeout(() => {
                 const input = document.getElementById('destination-input');
                 if (input) {
@@ -991,21 +1035,33 @@
         };
 
         window.saveDestination = () => {
-            if (state.newDestinationInput.length > 0) {
-                const updatedDestination = state.newDestinationInput;
-                const updatedOrder = { ...state.activeOrder, destination: updatedDestination };
-                
-                const orderIndex = MOCK_ORDERS.findIndex(o => o.id === updatedOrder.id);
-                if (orderIndex !== -1) {
-                    MOCK_ORDERS[orderIndex] = updatedOrder;
-                }
-                
-                setState({
-                    activeOrder: updatedOrder,
-                    isEditingDestination: false,
-                    newDestinationInput: ''
-                });
+            const candidate = state.newDestinationInput.trim();
+            if (!candidate) {
+                setState({ destinationError: 'Voer een locatie in.' });
+                return;
             }
+
+            const isKnownLocation = KNOWN_LOCATIONS.includes(candidate);
+            if (!isKnownLocation) {
+                setState({ destinationError: 'Onbekende locatiecode. Kies een bestaande code of gebruik een suggestie.' });
+                return;
+            }
+
+            const updatedDestination = candidate;
+            const updatedOrder = { ...state.activeOrder, destination: updatedDestination };
+
+            const orderIndex = MOCK_ORDERS.findIndex(o => o.id === updatedOrder.id);
+            if (orderIndex !== -1) {
+                MOCK_ORDERS[orderIndex] = updatedOrder;
+            }
+
+            setState({
+                activeOrder: updatedOrder,
+                isEditingDestination: false,
+                newDestinationInput: '',
+                destinationSuggestions: [],
+                destinationError: null,
+            });
         };
         
         window.resetLoc = () => setState({ scanStep: 1, scannedData: { ...state.scannedData, location: '' } });
