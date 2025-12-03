@@ -121,6 +121,8 @@
             activeOrder: null,
             pickItems: [],
             pickedItems: new Set(),
+            pickSearchTerm: '',
+            pickSortOption: 'default',
             isLoadingOrderLines: false,
             orderLineError: null,
             scanStep: 0,
@@ -191,6 +193,24 @@
         };
 
         const priorityRank = { high: 0, normal: 1, low: 2 };
+
+        const sortPickItems = (items, option = 'default') => {
+            if (option === 'default') return items;
+
+            const sorted = [...items];
+            switch (option) {
+                case 'name':
+                    sorted.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+                    break;
+                case 'location':
+                    sorted.sort((a, b) => (a.location || '').localeCompare(b.location || ''));
+                    break;
+                case 'sku':
+                    sorted.sort((a, b) => (a.id || '').localeCompare(b.id || ''));
+                    break;
+            }
+            return sorted;
+        };
 
         const sortOrders = (orders) => {
             const sorted = [...orders];
@@ -507,34 +527,55 @@
                     'border-dashed border border-white/10'
                 );
             } else {
-                itemsHtml = state.pickItems.map(item => {
-                    const isSelected = state.pickedItems.has(item.id);
-                    const borderClass = isSelected
-                        ? (state.darkMode ? 'border-emerald-500/50 bg-emerald-500/10' : 'border-emerald-500 bg-emerald-50')
-                        : '';
-                    const checkBg = isSelected
-                        ? 'bg-emerald-500 text-white border-emerald-500'
-                        : (state.darkMode ? 'bg-white/5 border-white/10' : 'bg-slate-50 border-slate-200');
+                const searchTerm = (state.pickSearchTerm || '').trim().toLowerCase();
+                const filteredItems = searchTerm
+                    ? state.pickItems.filter((item) => {
+                        const target = `${item.name || ''} ${item.id || ''} ${item.location || ''}`.toLowerCase();
+                        return target.includes(searchTerm);
+                    })
+                    : state.pickItems;
 
-                    // Padding verlaagd en margins aangepast voor compactere lijst
-                    return GlassCard(`
-                        <div class="flex items-stretch min-h-[4rem] -m-3">
-                            <div class="w-12 flex items-center justify-center border-r transition-colors ${checkBg}">
-                                <i data-lucide="${isSelected ? 'check-square' : 'square'}" width="20" class="${isSelected ? 'text-white' : (state.darkMode ? 'text-white/60' : 'text-slate-400')}"></i>
-                            </div>
-                            <div class="flex-1 p-3 flex flex-col justify-center">
-                                <div class="flex justify-between items-start">
-                                    <span class="text-[10px] font-mono px-1.5 py-0.5 rounded mb-0.5 inline-block ${state.darkMode ? 'bg-white/10' : 'bg-slate-200 text-slate-700'}">
-                                        ${item.location}
-                                    </span>
-                                    <span class="${t.textMain} font-bold text-base">${item.qty} <span class="text-[10px] font-normal opacity-60">${item.unit}</span></span>
+                const sortedItems = sortPickItems(filteredItems, state.pickSortOption);
+
+                if (sortedItems.length === 0) {
+                    itemsHtml = GlassCard(
+                        `<div class="flex items-center gap-2 text-sm ${t.textSec}">
+                            <i data-lucide="search-x" width="16"></i>
+                            Geen resultaten voor "${state.pickSearchTerm}".
+                        </div>`,
+                        null,
+                        'border-dashed border border-white/10'
+                    );
+                } else {
+                    itemsHtml = sortedItems.map(item => {
+                        const isSelected = state.pickedItems.has(item.id);
+                        const borderClass = isSelected
+                            ? (state.darkMode ? 'border-emerald-500/50 bg-emerald-500/10' : 'border-emerald-500 bg-emerald-50')
+                            : '';
+                        const checkBg = isSelected
+                            ? 'bg-emerald-500 text-white border-emerald-500'
+                            : (state.darkMode ? 'bg-white/5 border-white/10' : 'bg-slate-50 border-slate-200');
+
+                        // Padding verlaagd en margins aangepast voor compactere lijst
+                        return GlassCard(`
+                            <div class="flex items-stretch min-h-[4rem] -m-3">
+                                <div class="w-12 flex items-center justify-center border-r transition-colors ${checkBg}">
+                                    <i data-lucide="${isSelected ? 'check-square' : 'square'}" width="20" class="${isSelected ? 'text-white' : (state.darkMode ? 'text-white/60' : 'text-slate-400')}"></i>
                                 </div>
-                                <h4 class="${t.textMain} font-bold text-sm leading-tight truncate">${item.name}</h4>
-                                <div class="${t.textSec} text-[10px] font-mono mt-0.5">${item.id}</div>
+                                <div class="flex-1 p-3 flex flex-col justify-center">
+                                    <div class="flex justify-between items-start">
+                                        <span class="text-[10px] font-mono px-1.5 py-0.5 rounded mb-0.5 inline-block ${state.darkMode ? 'bg-white/10' : 'bg-slate-200 text-slate-700'}">
+                                            ${item.location}
+                                        </span>
+                                        <span class="${t.textMain} font-bold text-base">${item.qty} <span class="text-[10px] font-normal opacity-60">${item.unit}</span></span>
+                                    </div>
+                                    <h4 class="${t.textMain} font-bold text-sm leading-tight truncate">${item.name}</h4>
+                                    <div class="${t.textSec} text-[10px] font-mono mt-0.5">${item.id}</div>
+                                </div>
                             </div>
-                        </div>
-                    `, `togglePickItem('${item.id}')`, `transition-all duration-200 ${borderClass} !p-0`);
-                }).join('<div class="h-2"></div>');
+                        `, `togglePickItem('${item.id}')`, `transition-all duration-200 ${borderClass} !p-0`);
+                    }).join('<div class="h-2"></div>');
+                }
             }
 
             return `
@@ -566,6 +607,28 @@
                         </div>
                     `, null, 'mb-3')}
                     <div class="p-3 rounded-xl mb-3 text-xs ${state.darkMode ? 'bg-blue-500/10 text-blue-200 border border-blue-500/20' : 'bg-blue-50 text-blue-800 border border-blue-200'}">Selecteer items.</div>
+                    <div class="flex items-center gap-2 mb-3">
+                        <div class="flex-1 relative">
+                            <i data-lucide="search" width="16" class="absolute left-3 top-1/2 -translate-y-1/2 ${state.darkMode ? 'text-white/50' : 'text-slate-400'}"></i>
+                            <input
+                                type="text"
+                                value="${state.pickSearchTerm}"
+                                oninput="handlePickSearch(this.value)"
+                                placeholder="Zoek op naam, SKU of locatie"
+                                class="w-full rounded-xl bg-transparent border px-9 py-2 text-sm ${state.darkMode ? 'border-white/15 text-white placeholder:text-white/40 focus:border-red-500' : 'border-slate-200 text-slate-900 placeholder:text-slate-400 focus:border-red-500'} outline-none"
+                            />
+                            ${state.pickSearchTerm ? `<button onclick=\"handlePickSearch('')\" class=\"absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded-full ${state.darkMode ? 'bg-white/10 hover:bg-white/20 text-white' : 'bg-slate-100 hover:bg-slate-200 text-slate-700'}\"><i data-lucide=\"x\" width=\"14\"></i></button>` : ''}
+                        </div>
+                        <div class="relative">
+                            <select onchange="setPickSortOption(this.value)" class="appearance-none pr-8 pl-3 py-2 rounded-xl text-sm border ${state.darkMode ? 'bg-white/5 border-white/15 text-white focus:border-red-500' : 'bg-white border-slate-200 text-slate-900 focus:border-red-500'}">
+                                <option value="default" ${state.pickSortOption === 'default' ? 'selected' : ''}>Volgorde</option>
+                                <option value="name" ${state.pickSortOption === 'name' ? 'selected' : ''}>Naam</option>
+                                <option value="sku" ${state.pickSortOption === 'sku' ? 'selected' : ''}>SKU</option>
+                                <option value="location" ${state.pickSortOption === 'location' ? 'selected' : ''}>Locatie</option>
+                            </select>
+                            <i data-lucide="chevrons-up-down" width="14" class="absolute right-2 top-1/2 -translate-y-1/2 ${state.darkMode ? 'text-white/50' : 'text-slate-400'}"></i>
+                        </div>
+                    </div>
                     <div class="flex-1 overflow-y-auto space-y-2 pr-1 pb-4 no-scrollbar">${itemsHtml}</div>
                     <div class="mt-2 pt-2 border-t ${state.darkMode ? 'border-white/10' : 'border-slate-200'}">
                         <div class="flex justify-between items-center mb-2 px-1">
@@ -734,6 +797,13 @@
                 setState({ sortOption: option });
             }
         };
+        window.handlePickSearch = (value) => setState({ pickSearchTerm: value });
+        window.setPickSortOption = (option) => {
+            const allowed = ['default', 'name', 'location', 'sku'];
+            if (allowed.includes(option)) {
+                setState({ pickSortOption: option });
+            }
+        };
         window.openOrder = (id) => {
             const order = MOCK_ORDERS.find(x => x.id === id);
             if (!order) return;
@@ -742,6 +812,8 @@
                 activeOrder: order,
                 view: 'picking',
                 pickedItems: new Set(),
+                pickSearchTerm: '',
+                pickSortOption: 'default',
                 isEditingDestination: false,
                 scanFeedback: null,
                 orderLineError: null,
