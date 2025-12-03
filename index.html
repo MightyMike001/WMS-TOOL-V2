@@ -22,7 +22,7 @@
 
         /* AANGEPASTE CSS: Header blijft nu zichtbaar */
         .is-scrolled .header-profile { 
-            margin-bottom: 0.25rem; /* Nog compacter bij scrollen */
+            margin-bottom: 0.25rem; 
             padding-top: 0.25rem;
             padding-bottom: 0.25rem;
         }
@@ -38,6 +38,10 @@
         .is-scrolled .kpi-compact { opacity: 1; transform: translateY(0); pointer-events: auto; }
         
         #reader video { object-fit: cover; width: 100% !important; height: 100% !important; border-radius: 1.5rem; }
+
+        /* Modal animatie */
+        .modal-enter { opacity: 0; transform: scale(0.95); }
+        .modal-enter-active { opacity: 1; transform: scale(1); transition: all 0.3s ease-out; }
     </style>
 </head>
 <body class="bg-[#050505] text-white h-screen w-screen overflow-hidden selection:bg-red-500/30 font-sans transition-colors duration-500" id="body-bg">
@@ -51,6 +55,8 @@
 
     <script>
         // --- 1. DATA & STATE ---
+        // Let op: In een echte app zouden MOCK_ORDERS en MOCK_PICK_ITEMS uit een database komen.
+        // We verwijderen hier items direct uit de MOCK_PICK_ITEMS array om de 'rest' te simuleren.
         const MOCK_ORDERS = [
             { id: 'ORD-2025-881', priority: 'high', items: 4, type: 'replenishment', destination: 'WS-PACK-01', status: 'pending' },
             { id: 'ORD-2025-882', priority: 'normal', items: 12, type: 'outbound', destination: 'DOCK-04', status: 'pending' },
@@ -62,7 +68,7 @@
              { id: 'ORD-2025-894', priority: 'normal', items: 3, location: 'B-11-05', status: 'pending' },
         ];
 
-        const MOCK_PICK_ITEMS = [
+        let MOCK_PICK_ITEMS = [
             { id: 'SKU-9901', name: 'Hydrauliek Pomp V2', qty: 1, location: 'A-12-01', unit: 'st' },
             { id: 'SKU-9902', name: 'Hydrauliek Pomp V2', qty: 1, location: 'A-12-02', unit: 'st' },
             { id: 'SKU-2210', name: 'Linde Remblok Set', qty: 5, location: 'B-04-01', unit: 'doos' },
@@ -85,7 +91,10 @@
                 picksPerHour: 38,
                 accuracy: 99.2,
                 totalPicksShift: 142
-            }
+            },
+            isEditingDestination: false,
+            newDestinationInput: '',
+            showConfirmationModal: false // NIEUW: Voor de pick bevestiging
         };
 
         // --- 2. STATE MANAGEMENT ---
@@ -226,6 +235,27 @@
         function renderPicking() {
             const t = getTheme();
             if (!state.activeOrder) return '';
+            
+            // --- LOGICA VOOR DESTINATION WIJZIGEN ---
+            const destinationBlock = state.isEditingDestination ? `
+                <div class="flex flex-col gap-2 w-full">
+                    <input id="destination-input" type="text" value="${state.newDestinationInput || state.activeOrder.destination || ''}" oninput="setNewDestinationInput(this.value)"
+                        class="bg-white/10 text-white p-2 rounded-lg font-mono text-xl outline-none focus:ring-2 focus:ring-red-500 transition-all uppercase"
+                    />
+                    <div class="flex gap-2">
+                        ${Button('Opslaan', 'saveDestination()', 'success', 'save', state.newDestinationInput.length < 1)}
+                        ${Button('Annuleren', 'toggleEditDestination()', 'secondary', 'x', false)}
+                    </div>
+                </div>
+            ` : `
+                <div onclick="toggleEditDestination()" class="flex items-center gap-2 cursor-pointer group w-full">
+                    <h1 class="text-xl font-mono font-bold text-red-500">${state.activeOrder.destination || 'GEEN LOCATIE'}</h1>
+                    <i data-lucide="edit" width="16" class="text-red-500/70 group-hover:text-red-500 transition-colors shrink-0"></i>
+                </div>
+            `;
+            // --- EINDE LOGICA ---
+
+
             const itemsHtml = MOCK_PICK_ITEMS.map(item => {
                 const isSelected = state.pickedItems.has(item.id);
                 const borderClass = isSelected 
@@ -257,13 +287,13 @@
 
             return `
                  <div class="h-full flex flex-col px-4 pt-4 pb-2">
-                    <div class="flex items-center gap-3 mb-3 shrink-0">
+                    <div class="flex items-start gap-3 mb-3 shrink-0">
                         <button onclick="navigate('dashboard')" class="p-2 rounded-full ${state.darkMode ? 'bg-white/10 hover:bg-white/20 text-white' : 'bg-white border border-slate-200 hover:bg-slate-50 text-slate-900'} transition-colors">
                             <i data-lucide="arrow-left" width="20"></i>
                         </button>
-                        <div>
+                        <div class="flex-1 min-w-0">
                             <h2 class="${state.darkMode ? 'text-white/60' : 'text-slate-600'} text-[10px] uppercase tracking-widest">Verplaatsen Naar</h2>
-                            <h1 class="text-xl font-mono font-bold text-red-500">${state.activeOrder.destination}</h1>
+                            ${destinationBlock}
                         </div>
                     </div>
                     <div class="p-3 rounded-xl mb-3 text-xs ${state.darkMode ? 'bg-blue-500/10 text-blue-200 border border-blue-500/20' : 'bg-blue-50 text-blue-800 border border-blue-200'}">Selecteer items.</div>
@@ -273,8 +303,9 @@
                             <span class="${t.textSec} text-xs">Geselecteerd</span>
                             <span class="${t.textMain} font-bold text-lg">${state.pickedItems.size} <span class="text-xs font-normal opacity-50">/ ${MOCK_PICK_ITEMS.length}</span></span>
                         </div>
-                        ${Button(state.pickedItems.size > 0 ? `Verplaats ${state.pickedItems.size} Items` : "Selecteer Items", 'confirmPicking()', state.pickedItems.size > 0 ? 'success' : 'secondary', 'arrow-right', state.pickedItems.size === 0)}
+                        ${Button(state.pickedItems.size > 0 ? `Verplaats ${state.pickedItems.size} Items` : "Selecteer Items", 'openConfirmationModal()', state.pickedItems.size > 0 ? 'success' : 'secondary', 'arrow-right', state.pickedItems.size === 0)}
                     </div>
+                    ${renderNav()}
                 </div>
             `;
         }
@@ -365,32 +396,54 @@
 
         function renderScanner() {
             if (!state.showScanner) return '';
-            // We gebruiken een echte HTML5 QRCode Reader div hier
             return `
                 <div class="fixed inset-0 z-50 bg-black flex flex-col items-center justify-center p-0 animate-[fadeIn_0.2s_ease-out]">
-                    <!-- Camera Container -->
                     <div class="relative w-full h-full flex flex-col">
-                        
-                        <!-- Video output area -->
                         <div id="reader" class="w-full h-full bg-black object-cover"></div>
-                        
-                        <!-- Overlay UI on top of camera -->
                         <div class="absolute inset-0 pointer-events-none flex flex-col items-center justify-center">
-                             <!-- Scan Frame -->
                              <div class="w-64 h-64 border-2 border-white/40 rounded-3xl relative">
                                 <div class="absolute inset-0 border-[40px] border-black/40 rounded-3xl"></div>
                                 <div class="absolute top-1/2 left-4 right-4 h-0.5 bg-red-500 shadow-[0_0_20px_rgba(239,68,68,0.8)] animate-[ping_1.5s_cubic-bezier(0,0,0.2,1)_infinite]"></div>
                              </div>
                              <div class="mt-8 bg-black/60 px-4 py-2 rounded-full backdrop-blur-md text-white font-mono text-sm">Richt op barcode</div>
                         </div>
-
-                        <!-- Cancel Button at bottom -->
                         <div class="absolute bottom-10 left-0 right-0 flex justify-center pointer-events-auto">
                             <button onclick="closeScanner()" class="bg-white/20 backdrop-blur-md border border-white/20 text-white px-8 py-4 rounded-full font-bold shadow-lg active:scale-95 transition-transform">
                                 Annuleren
                             </button>
                         </div>
                     </div>
+                </div>
+            `;
+        }
+        
+        // NIEUW: CONFIRMATION MODAL
+        function renderConfirmationModal() {
+            if (!state.showConfirmationModal || state.pickedItems.size === 0) return '';
+            
+            const t = getTheme();
+            const pickedCount = state.pickedItems.size;
+            const remainingCount = MOCK_PICK_ITEMS.length - pickedCount;
+
+            return `
+                <div id="confirmation-modal" class="fixed inset-0 z-50 flex items-center justify-center p-6 bg-black/50 backdrop-blur-sm modal-enter modal-enter-active">
+                    ${GlassCard(`
+                        <div class="flex flex-col gap-4">
+                            <h3 class="${t.textMain} text-xl font-bold">Bevestig Verplaatsing</h3>
+                            
+                            <p class="${t.textSec} text-sm">U staat op het punt **${pickedCount}** items te verplaatsen naar **${state.activeOrder.destination}**.</p>
+                            
+                            <ul class="space-y-1 ${t.textSec} text-sm">
+                                <li class="font-bold text-emerald-500 flex items-center gap-2"><i data-lucide="check-circle" width="16"></i> ${pickedCount} item(s) voltooid.</li>
+                                <li class="text-red-400 flex items-center gap-2"><i data-lucide="alert-triangle" width="16"></i> ${remainingCount} item(s) blijven over.</li>
+                            </ul>
+
+                            <div class="flex gap-3 mt-2">
+                                ${Button('Annuleren', 'closeConfirmationModal()', 'secondary', 'x', false)}
+                                ${Button('Bevestig & Verplaats', 'executePicking()', 'success', 'arrow-right')}
+                            </div>
+                        </div>
+                    `, null, 'p-6 !rounded-xl w-full max-w-sm')}
                 </div>
             `;
         }
@@ -401,44 +454,104 @@
         window.logout = () => setState({ user: null, view: 'login', loginInput: '' });
         window.navigate = (view) => setState({ view });
         window.toggleTheme = () => { setState({ darkMode: !state.darkMode }); const b=document.body; if(!state.darkMode){b.classList.remove('bg-[#050505]','text-white');b.classList.add('bg-[#f0f4f8]','text-slate-900');}else{b.classList.add('bg-[#050505]','text-white');b.classList.remove('bg-[#f0f4f8]','text-slate-900');} };
-        window.openOrder = (id) => { const o = MOCK_ORDERS.find(x=>x.id===id); setState({ activeOrder: o, view: 'picking', pickedItems: new Set() }); };
+        window.openOrder = (id) => { const o = MOCK_ORDERS.find(x=>x.id===id); setState({ activeOrder: o, view: 'picking', pickedItems: new Set(), isEditingDestination: false }); };
         window.togglePickItem = (id) => { const s = new Set(state.pickedItems); if(s.has(id))s.delete(id);else s.add(id); setState({ pickedItems: s }); };
         
-        // UPDATE CONFIRM PICKING OM STATS TE UPDATEN
-        window.confirmPicking = () => { 
+        // --- HANDLERS VOOR MODAL ---
+        window.openConfirmationModal = () => {
+            if (state.pickedItems.size > 0) {
+                setState({ showConfirmationModal: true });
+            }
+        };
+
+        window.closeConfirmationModal = () => {
+            setState({ showConfirmationModal: false });
+        };
+
+        window.executePicking = () => {
+            const itemsToKeep = MOCK_PICK_ITEMS.filter(item => !state.pickedItems.has(item.id));
             const count = state.pickedItems.size;
-            // Simulatie van werk: Picks per uur schommelt iets, totaal neemt toe
-            const newPicks = Math.min(60, Math.max(30, state.stats.picksPerHour + (Math.random() > 0.5 ? 2 : -2)));
             
+            // Simuleer backend update door de MOCK array te vervangen
+            MOCK_PICK_ITEMS = itemsToKeep; 
+
+            const newPicks = Math.min(60, Math.max(30, state.stats.picksPerHour + (Math.random() > 0.5 ? 1 : -1)));
+            
+            // Als er geen items meer over zijn, markeer order als voltooid (in een echte app)
+            if (MOCK_PICK_ITEMS.length === 0) {
+                // Hier zou de order status in MOCK_ORDERS worden gewijzigd naar 'completed'
+            }
+
             setState({ 
-                view: 'dashboard', 
-                activeOrder: null,
+                view: MOCK_PICK_ITEMS.length > 0 ? 'picking' : 'dashboard', 
+                activeOrder: MOCK_PICK_ITEMS.length > 0 ? state.activeOrder : null,
+                pickedItems: new Set(),
+                showConfirmationModal: false,
                 stats: {
                     ...state.stats,
                     picksPerHour: newPicks,
                     totalPicksShift: state.stats.totalPicksShift + count
                 }
             }); 
-            // alert verwijderd voor soepelere flow
+            // We blijven op de picking pagina als er nog items zijn (Partial Pick), anders terug naar dashboard
+            if (MOCK_PICK_ITEMS.length === 0) {
+                setTimeout(() => alert(`Order ${state.activeOrder.id} voltooid!`), 100);
+            }
+        };
+        // --- EINDE MODAL HANDLERS ---
+
+        // HANDLERS VOOR DESTINATION WIJZIGEN
+        window.toggleEditDestination = () => {
+            const isEditing = state.isEditingDestination;
+            if (!isEditing) {
+                setState({ isEditingDestination: true, newDestinationInput: state.activeOrder.destination || '' });
+            } else {
+                setState({ isEditingDestination: false, newDestinationInput: '' });
+            }
         };
 
+        window.setNewDestinationInput = (value) => {
+            state.newDestinationInput = value.toUpperCase(); 
+            render(); 
+            setTimeout(() => {
+                const input = document.getElementById('destination-input');
+                if (input) {
+                    input.focus();
+                    input.value = state.newDestinationInput;
+                    input.setSelectionRange(input.value.length, input.value.length);
+                }
+            }, 0);
+        };
+
+        window.saveDestination = () => {
+            if (state.newDestinationInput.length > 0) {
+                const updatedDestination = state.newDestinationInput;
+                const updatedOrder = { ...state.activeOrder, destination: updatedDestination };
+                
+                const orderIndex = MOCK_ORDERS.findIndex(o => o.id === updatedOrder.id);
+                if (orderIndex !== -1) {
+                    MOCK_ORDERS[orderIndex] = updatedOrder;
+                }
+                
+                setState({
+                    activeOrder: updatedOrder,
+                    isEditingDestination: false,
+                    newDestinationInput: ''
+                });
+            }
+        };
+        
         window.resetLoc = () => setState({ scanStep: 1, scannedData: { ...state.scannedData, location: '' } });
         window.confirmAssetLink = () => { setState({ scanStep: 3 }); setTimeout(() => { setState({ scanStep: 0, scannedData: { truck: '', location: '' } }); }, 2500); };
 
         // --- REAL CAMERA LOGIC ---
         
         window.openScanner = () => {
-            // 1. Toon scanner UI
             setState({ showScanner: true });
-            
-            // 2. Start Camera (na korte delay zodat DOM element bestaat)
             setTimeout(() => {
                 const html5QrCode = new Html5Qrcode("reader");
-                state.html5QrCode = html5QrCode; // Save instance to stop later
-                
+                state.html5QrCode = html5QrCode; 
                 const config = { fps: 10, qrbox: { width: 250, height: 250 } };
-                
-                // Start camera (back camera by default)
                 html5QrCode.start({ facingMode: "environment" }, config, onScanSuccess, onScanFailure)
                 .catch(err => {
                     console.error("Camera start failed", err);
@@ -463,7 +576,6 @@
         };
 
         function onScanSuccess(decodedText, decodedResult) {
-            // Stop scanning logic
             if (state.html5QrCode) {
                 state.html5QrCode.stop().then(() => {
                     state.html5QrCode.clear();
@@ -472,9 +584,7 @@
             }
         }
         
-        function onScanFailure(error) {
-            // Do nothing on failure, purely noise
-        }
+        function onScanFailure(error) {}
 
         function handleRealScan(result) {
             setState({ showScanner: false, html5QrCode: null });
@@ -520,6 +630,7 @@
                 case 'asset-scan': html = renderAssetScan(); break;
             }
             html += renderScanner();
+            html += renderConfirmationModal(); // Render modal bovenop alles
             app.innerHTML = html;
             lucide.createIcons();
             attachScrollListener();
