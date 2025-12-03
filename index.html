@@ -139,7 +139,10 @@
             },
             isEditingDestination: false,
             newDestinationInput: '',
-            showConfirmationModal: false // NIEUW: Voor de pick bevestiging
+            showConfirmationModal: false, // NIEUW: Voor de pick bevestiging
+            // Initialisatieflags
+            initialOrderLinesLoaded: false,
+            isLoadingInitialOrderLines: false
         };
 
         // --- 2. STATE MANAGEMENT ---
@@ -284,6 +287,33 @@
 
             return { remainingLines, totalLines };
         };
+
+        async function initializeOrderLineCounts() {
+            if (state.isLoadingInitialOrderLines || state.initialOrderLinesLoaded) {
+                return;
+            }
+
+            setState({ isLoadingInitialOrderLines: true });
+
+            try {
+                const updatedOrders = await Promise.all(MOCK_ORDERS.map(async (order) => {
+                    try {
+                        const lines = await fetchOrderLines(order.id);
+                        ORDER_LINE_CACHE[order.id] = lines;
+                        return { ...order, items: lines.length, totalItems: lines.length };
+                    } catch (error) {
+                        console.warn(`Initialiseren van orderregels mislukt voor ${order.id}`, error);
+                        return order;
+                    }
+                }));
+
+                MOCK_ORDERS = updatedOrders;
+
+                setState({ initialOrderLinesLoaded: true });
+            } finally {
+                setState({ isLoadingInitialOrderLines: false });
+            }
+        }
 
         const Button = (label, onClick, variant = 'primary', icon = '', disabled = false) => {
             const variants = {
@@ -687,7 +717,12 @@
 
         // --- 5. HANDLERS ---
         window.handleInput = (val) => { state.loginInput = val.toUpperCase(); render(); const i=document.querySelector('input'); if(i){i.focus(); i.setSelectionRange(i.value.length,i.value.length);} };
-        window.handleLogin = () => { if (state.loginInput.length === 3) setState({ user: { initials: state.loginInput }, view: 'dashboard' }); };
+        window.handleLogin = () => {
+            if (state.loginInput.length === 3) {
+                setState({ user: { initials: state.loginInput }, view: 'dashboard' });
+                initializeOrderLineCounts();
+            }
+        };
         window.logout = () => setState({ user: null, view: 'login', loginInput: '' });
         window.navigate = (view) => setState({ view });
         window.toggleTheme = () => { setState({ darkMode: !state.darkMode }); const b=document.body; if(!state.darkMode){b.classList.remove('bg-[#050505]','text-white');b.classList.add('bg-[#f0f4f8]','text-slate-900');}else{b.classList.add('bg-[#050505]','text-white');b.classList.remove('bg-[#f0f4f8]','text-slate-900');} };
