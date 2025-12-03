@@ -178,11 +178,21 @@
             bgMain: state.darkMode ? 'bg-[#050505]' : 'bg-[#f0f4f8]',
             textMain: state.darkMode ? 'text-white' : 'text-slate-900',
             textSec: state.darkMode ? 'text-white/50' : 'text-slate-500',
-            glass: state.darkMode 
-                ? 'bg-white/10 border-white/20 shadow-[0_8px_32px_0_rgba(0,0,0,0.37)]' 
+            glass: state.darkMode
+                ? 'bg-white/10 border-white/20 shadow-[0_8px_32px_0_rgba(0,0,0,0.37)]'
                 : 'bg-white/80 border-slate-200/60 shadow-[0_4px_24px_0_rgba(100,116,139,0.15)]',
             navGlass: state.darkMode ? 'bg-white/5 border-white/10' : 'bg-white/60 border-slate-200/60'
         });
+
+        function syncBodyTheme(darkMode = state.darkMode) {
+            const b = document.body;
+            b.classList.remove('bg-[#050505]', 'text-white', 'bg-[#f0f4f8]', 'text-slate-900');
+            if (darkMode) {
+                b.classList.add('bg-[#050505]', 'text-white');
+            } else {
+                b.classList.add('bg-[#f0f4f8]', 'text-slate-900');
+            }
+        }
 
         const GlassCard = (content, onClick = null, extraClasses = '') => {
             const t = getTheme();
@@ -817,7 +827,10 @@
         };
         window.logout = () => setState({ user: null, view: 'login', loginInput: '' });
         window.navigate = (view) => setState({ view });
-        window.toggleTheme = () => { setState({ darkMode: !state.darkMode }); const b=document.body; if(!state.darkMode){b.classList.remove('bg-[#050505]','text-white');b.classList.add('bg-[#f0f4f8]','text-slate-900');}else{b.classList.add('bg-[#050505]','text-white');b.classList.remove('bg-[#f0f4f8]','text-slate-900');} };
+        window.toggleTheme = () => {
+            const nextDarkMode = !state.darkMode;
+            setState({ darkMode: nextDarkMode });
+        };
         window.setSortOption = (option) => {
             const allowed = ['priority', 'destination', 'createdAt'];
             if (allowed.includes(option)) {
@@ -1157,6 +1170,7 @@
             html += renderScanner();
             html += renderConfirmationModal(); // Render modal bovenop alles
             app.innerHTML = html;
+            syncBodyTheme();
             lucide.createIcons();
             attachScrollListener();
         }
