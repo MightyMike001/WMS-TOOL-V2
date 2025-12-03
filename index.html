@@ -58,14 +58,14 @@
         // Let op: In een echte app zouden MOCK_ORDERS en MOCK_PICK_ITEMS uit een database komen.
         // We verwijderen hier items direct uit de MOCK_PICK_ITEMS array om de 'rest' te simuleren.
         const MOCK_ORDERS = [
-            { id: 'ORD-2025-881', priority: 'high', items: 4, type: 'replenishment', destination: 'WS-PACK-01', status: 'pending' },
-            { id: 'ORD-2025-882', priority: 'normal', items: 12, type: 'outbound', destination: 'DOCK-04', status: 'pending' },
-            { id: 'ORD-2025-889', priority: 'low', items: 1, type: 'internal', destination: 'LOC-Z-99', status: 'pending' },
-            { id: 'ORD-2025-890', priority: 'normal', items: 8, location: 'A-14-02', status: 'pending' },
-            { id: 'ORD-2025-891', priority: 'low', items: 2, location: 'B-02-11', status: 'pending' },
-            { id: 'ORD-2025-892', priority: 'normal', items: 5, location: 'C-12-01', status: 'pending' },
-            { id: 'ORD-2025-893', priority: 'low', items: 1, location: 'A-01-01', status: 'pending' },
-             { id: 'ORD-2025-894', priority: 'normal', items: 3, location: 'B-11-05', status: 'pending' },
+            { id: 'ORD-2025-881', priority: 'high', createdAt: '2025-02-15T07:45:00Z', items: 4, type: 'replenishment', destination: 'WS-PACK-01', status: 'pending' },
+            { id: 'ORD-2025-882', priority: 'normal', createdAt: '2025-02-16T09:10:00Z', items: 12, type: 'outbound', destination: 'DOCK-04', status: 'pending' },
+            { id: 'ORD-2025-889', priority: 'low', createdAt: '2025-02-14T14:20:00Z', items: 1, type: 'internal', destination: 'LOC-Z-99', status: 'pending' },
+            { id: 'ORD-2025-890', priority: 'normal', createdAt: '2025-02-16T11:05:00Z', items: 8, destination: 'A-14-02', status: 'pending' },
+            { id: 'ORD-2025-891', priority: 'low', createdAt: '2025-02-16T06:35:00Z', items: 2, destination: 'B-02-11', status: 'pending' },
+            { id: 'ORD-2025-892', priority: 'normal', createdAt: '2025-02-15T17:30:00Z', items: 5, destination: 'C-12-01', status: 'pending' },
+            { id: 'ORD-2025-893', priority: 'low', createdAt: '2025-02-13T08:00:00Z', items: 1, destination: 'A-01-01', status: 'pending' },
+            { id: 'ORD-2025-894', priority: 'high', createdAt: '2025-02-16T05:50:00Z', items: 3, destination: 'B-11-05', status: 'pending' },
         ];
 
         let MOCK_PICK_ITEMS = [
@@ -87,6 +87,7 @@
             loginInput: '',
             showScanner: false,
             html5QrCode: null,
+            sortOption: 'priority',
             stats: {
                 picksPerHour: 38,
                 accuracy: 99.2,
@@ -126,6 +127,29 @@
                     </div>
                 </div>
             `;
+        };
+
+        const priorityStyles = {
+            high: { label: 'Urgent', chip: 'bg-red-500/15 text-red-200 border border-red-500/30', icon: 'bg-red-500/20 text-red-500' },
+            normal: { label: 'Standaard', chip: 'bg-blue-500/15 text-blue-200 border border-blue-500/30', icon: 'bg-blue-500/20 text-blue-500' },
+            low: { label: 'Laag', chip: 'bg-amber-500/15 text-amber-200 border border-amber-500/30', icon: 'bg-amber-500/20 text-amber-500' },
+        };
+
+        const priorityRank = { high: 0, normal: 1, low: 2 };
+
+        const sortOrders = (orders) => {
+            const sorted = [...orders];
+            sorted.sort((a, b) => {
+                if (state.sortOption === 'destination') {
+                    const destA = (a.destination || '').localeCompare(b.destination || '');
+                    return destA;
+                }
+                if (state.sortOption === 'createdAt') {
+                    return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+                }
+                return (priorityRank[a.priority] ?? 99) - (priorityRank[b.priority] ?? 99);
+            });
+            return sorted;
         };
 
         const Button = (label, onClick, variant = 'primary', icon = '', disabled = false) => {
@@ -172,10 +196,16 @@
 
         function renderDashboard() {
             const t = getTheme();
+            const sortedOrders = sortOrders(MOCK_ORDERS);
+            const sortLabels = {
+                priority: 'Urgentie',
+                destination: 'Bestemming',
+                createdAt: 'Aanmaakdatum'
+            };
             return `
                 <div id="dashboard-view" class="h-full flex flex-col px-4 pt-4 pb-2 overflow-hidden transition-all duration-500">
                     <div id="dashboard-header" class="flex-none z-20 transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] pb-2 pt-0 border-b border-transparent">
-                        
+
                         <!-- Header met Initialen (Links) en Logout (Rechts) -->
                         <div class="header-profile flex justify-between items-center mb-2 transition-all duration-500">
                             
@@ -198,25 +228,47 @@
 
                     <div id="scroll-container" class="flex-1 overflow-y-auto pb-16 no-scrollbar relative mt-1">
                         <!-- Sticky header nog compacter -->
-                        <div class="sticky top-0 z-10 py-2 backdrop-blur-xl transition-colors ${state.darkMode ? 'bg-[#050505]/80' : 'bg-[#f0f4f8]/80'} flex items-center justify-between mb-2">
-                            <h3 class="${t.textMain} text-base font-semibold">Openstaande Orders</h3>
-                            <span class="text-[10px] font-bold bg-red-600 text-white px-2 py-0.5 rounded-full">${MOCK_ORDERS.length} Totaal</span>
+                        <div class="sticky top-0 z-10 py-2 backdrop-blur-xl transition-colors ${state.darkMode ? 'bg-[#050505]/80' : 'bg-[#f0f4f8]/80'} flex items-center justify-between gap-3 mb-2">
+                            <div>
+                                <h3 class="${t.textMain} text-base font-semibold">Openstaande Orders</h3>
+                                <p class="${t.textSec} text-[11px] leading-tight">Gesorteerd op <span class="font-semibold">${sortLabels[state.sortOption]}</span></p>
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <div class="flex items-center gap-1 bg-white/5 border border-white/10 rounded-xl p-1 ${state.darkMode ? '' : 'bg-white/70 border-slate-200'}">
+                                    ${['priority','destination','createdAt'].map(option => `
+                                        <button onclick="setSortOption('${option}')" class="text-[11px] px-2 py-1 rounded-lg font-semibold flex items-center gap-1 transition-all ${state.sortOption === option
+                                            ? 'bg-red-600 text-white shadow-lg shadow-red-900/20'
+                                            : `${t.textSec} hover:${state.darkMode ? 'bg-white/10' : 'bg-white/70'}`}">
+                                            <i data-lucide="${option === 'priority' ? 'flame' : option === 'destination' ? 'map-pin' : 'clock'}" width="12"></i>
+                                            <span class="capitalize">${option === 'createdAt' ? 'datum' : option}</span>
+                                        </button>
+                                    `).join('')}
+                                </div>
+                                <span class="text-[10px] font-bold bg-red-600 text-white px-2 py-0.5 rounded-full">${MOCK_ORDERS.length} Totaal</span>
+                            </div>
                         </div>
                         <!-- Space-y-2 i.p.v. space-y-4 voor dichtere lijst -->
                         <div class="space-y-2">
-                            ${MOCK_ORDERS.map(order => GlassCard(`
+                            ${sortedOrders.map(order => GlassCard(`
                                 <div class="flex items-center gap-3">
                                     <!-- Kleiner icoon container w-10 h-10 -->
-                                    <div class="w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${order.priority === 'high' ? 'bg-red-500/20 text-red-500' : 'bg-blue-500/20 text-blue-500'}">
+                                    <div class="w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${priorityStyles[order.priority]?.icon || 'bg-blue-500/20 text-blue-500'}">
                                         <i data-lucide="package" width="18"></i>
                                     </div>
                                     <div class="min-w-0 flex-1">
-                                        <h4 class="${t.textMain} font-bold text-sm truncate">${order.id}</h4>
-                                        <div class="flex items-center gap-2 ${t.textSec} text-xs mt-0.5">
-                                            <i data-lucide="arrow-right" width="12"></i>
-                                            <span class="font-mono bg-white/10 px-1 rounded truncate">${order.destination}</span>
-                                            <span>•</span>
-                                            <span class="whitespace-nowrap">${order.items} regels</span>
+                                        <div class="flex items-center gap-2 mb-1">
+                                            <h4 class="${t.textMain} font-bold text-sm truncate">${order.id}</h4>
+                                            <span class="text-[10px] uppercase tracking-widest px-2 py-1 rounded-full font-bold ${priorityStyles[order.priority]?.chip}">${priorityStyles[order.priority]?.label || 'N.v.t.'}</span>
+                                        </div>
+                                        <div class="flex items-center gap-2 ${t.textSec} text-xs mt-0.5 flex-wrap">
+                                            <div class="flex items-center gap-1">
+                                                <i data-lucide="map-pin" width="12"></i>
+                                                <span class="font-mono bg-white/10 px-1 rounded truncate">${order.destination || 'GEEN LOC'}</span>
+                                            </div>
+                                            <span class="hidden sm:inline">•</span>
+                                            <span class="whitespace-nowrap flex items-center gap-1"><i data-lucide="clock" width="12"></i>${new Date(order.createdAt).toLocaleString('nl-NL', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}</span>
+                                            <span class="hidden sm:inline">•</span>
+                                            <span class="whitespace-nowrap flex items-center gap-1"><i data-lucide="list" width="12"></i>${order.items} regels</span>
                                         </div>
                                     </div>
                                     <div class="ml-auto shrink-0">
@@ -454,9 +506,15 @@
         window.logout = () => setState({ user: null, view: 'login', loginInput: '' });
         window.navigate = (view) => setState({ view });
         window.toggleTheme = () => { setState({ darkMode: !state.darkMode }); const b=document.body; if(!state.darkMode){b.classList.remove('bg-[#050505]','text-white');b.classList.add('bg-[#f0f4f8]','text-slate-900');}else{b.classList.add('bg-[#050505]','text-white');b.classList.remove('bg-[#f0f4f8]','text-slate-900');} };
+        window.setSortOption = (option) => {
+            const allowed = ['priority', 'destination', 'createdAt'];
+            if (allowed.includes(option)) {
+                setState({ sortOption: option });
+            }
+        };
         window.openOrder = (id) => { const o = MOCK_ORDERS.find(x=>x.id===id); setState({ activeOrder: o, view: 'picking', pickedItems: new Set(), isEditingDestination: false }); };
         window.togglePickItem = (id) => { const s = new Set(state.pickedItems); if(s.has(id))s.delete(id);else s.add(id); setState({ pickedItems: s }); };
-        
+
         // --- HANDLERS VOOR MODAL ---
         window.openConfirmationModal = () => {
             if (state.pickedItems.size > 0) {
