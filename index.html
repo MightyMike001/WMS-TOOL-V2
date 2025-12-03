@@ -114,8 +114,6 @@
             ],
         };
 
-        const ORDER_LINE_CACHE = {};
-
         let state = {
             view: 'login',
             user: null,
@@ -144,7 +142,8 @@
             showConfirmationModal: false, // NIEUW: Voor de pick bevestiging
             // Initialisatieflags
             initialOrderLinesLoaded: false,
-            isLoadingInitialOrderLines: false
+            isLoadingInitialOrderLines: false,
+            orderLineMap: {}
         };
 
         // --- 2. STATE MANAGEMENT ---
@@ -224,8 +223,10 @@
             } catch (error) {
                 console.warn('Orderregels ophalen mislukt, val terug op mock data.', error);
 
-                if (ORDER_LINE_CACHE[orderId]) {
-                    return ORDER_LINE_CACHE[orderId];
+                const cachedLines = state.orderLineMap?.[orderId];
+
+                if (cachedLines) {
+                    return cachedLines;
                 }
 
                 if (MOCK_ORDER_LINES[orderId]) {
@@ -247,7 +248,6 @@
 
             try {
                 const lines = await fetchOrderLines(orderId);
-                ORDER_LINE_CACHE[orderId] = lines;
 
                 const orderIndex = MOCK_ORDERS.findIndex(o => o.id === orderId);
                 const updatedOrder = orderIndex !== -1
@@ -264,6 +264,7 @@
                     pickItems: lines,
                     isLoadingOrderLines: false,
                     activeOrder: updatedOrder,
+                    orderLineMap: { ...state.orderLineMap, [orderId]: lines },
                 });
             } catch (error) {
                 setState({
@@ -274,7 +275,7 @@
             }
         }
 
-        const getOrderLineCountsForOrder = (order) => deriveOrderLineCounts(order, ORDER_LINE_CACHE);
+        const getOrderLineCountsForOrder = (order) => deriveOrderLineCounts(order, state.orderLineMap);
 
         async function initializeOrderLineCounts() {
             if (state.isLoadingInitialOrderLines || state.initialOrderLinesLoaded) {
@@ -284,10 +285,12 @@
             setState({ isLoadingInitialOrderLines: true });
 
             try {
+                const initializedOrderLineMap = { ...state.orderLineMap };
+
                 const updatedOrders = await Promise.all(MOCK_ORDERS.map(async (order) => {
                     try {
                         const lines = await fetchOrderLines(order.id);
-                        ORDER_LINE_CACHE[order.id] = lines;
+                        initializedOrderLineMap[order.id] = lines;
                         return { ...order, items: lines.length, totalItems: lines.length };
                     } catch (error) {
                         console.warn(`Initialiseren van orderregels mislukt voor ${order.id}`, error);
@@ -297,7 +300,10 @@
 
                 MOCK_ORDERS = updatedOrders;
 
-                setState({ initialOrderLinesLoaded: true });
+                setState({
+                    initialOrderLinesLoaded: true,
+                    orderLineMap: initializedOrderLineMap,
+                });
             } finally {
                 setState({ isLoadingInitialOrderLines: false });
             }
@@ -842,8 +848,15 @@
                 }
             }
 
+            let updatedOrderLineMap = { ...state.orderLineMap };
+
             if (updatedOrder?.id) {
-                ORDER_LINE_CACHE[updatedOrder.id] = itemsToKeep;
+                if (newStatus === 'completed') {
+                    const { [updatedOrder.id]: _, ...rest } = updatedOrderLineMap;
+                    updatedOrderLineMap = rest;
+                } else {
+                    updatedOrderLineMap = { ...updatedOrderLineMap, [updatedOrder.id]: itemsToKeep };
+                }
             }
 
             const newPicks = Math.min(60, Math.max(30, state.stats.picksPerHour + (Math.random() > 0.5 ? 1 : -1)));
@@ -858,7 +871,8 @@
                     ...state.stats,
                     picksPerHour: newPicks,
                     totalPicksShift: state.stats.totalPicksShift + count
-                }
+                },
+                orderLineMap: updatedOrderLineMap,
             });
             // We blijven op de picking pagina als er nog items zijn (Partial Pick), anders terug naar dashboard
             if (itemsToKeep.length === 0) {
