@@ -53,7 +53,9 @@
 
     <div id="app" class="relative z-10 h-full w-full max-w-md mx-auto"></div>
 
-    <script>
+    <script type="module">
+        import { getOrderLineCountsForOrder as deriveOrderLineCounts } from './orderLogic.js';
+
         // --- 1. DATA & STATE ---
         // Let op: In een echte app zouden MOCK_ORDERS en de bijbehorende orderregels uit een database komen.
         // Voor nu gebruiken we een mapping van mock orderregels en cachen we responses zodat elke order zijn eigen picklijst behoudt.
@@ -272,21 +274,7 @@
             }
         }
 
-        const getOrderLineCountsForOrder = (order) => {
-            if (!order) return { remainingLines: 0, totalLines: 0 };
-
-            const cachedLines = ORDER_LINE_CACHE[order.id];
-            const totalLines = (cachedLines?.length) ?? order.totalItems ?? order.items ?? 0;
-
-            // Het dashboard gebruikt nu altijd het totaal zolang een order nog op "pending" staat,
-            // zodat scans/selecties de teller niet tijdelijk verlagen. Pas na een bevestigde pick
-            // (status 'partial' of 'completed') tonen we het daadwerkelijk resterende aantal regels.
-            const remainingLines = order.status === 'pending'
-                ? totalLines
-                : (order.items ?? totalLines);
-
-            return { remainingLines, totalLines };
-        };
+        const getOrderLineCountsForOrder = (order) => deriveOrderLineCounts(order, ORDER_LINE_CACHE);
 
         async function initializeOrderLineCounts() {
             if (state.isLoadingInitialOrderLines || state.initialOrderLinesLoaded) {
