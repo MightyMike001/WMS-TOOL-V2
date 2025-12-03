@@ -564,20 +564,50 @@
             }, 0);
         };
 
+        function normalizeScanCode(rawCode) {
+            return String(rawCode || '')
+                .trim()
+                .replace(/\s+/g, '')
+                .toUpperCase();
+        }
+
         function processPickingScan(rawCode) {
-            const normalized = rawCode.trim().toUpperCase();
-            const item = MOCK_PICK_ITEMS.find((i) => i.id.toUpperCase() === normalized);
-            if (item) {
-                const alreadyPicked = state.pickedItems.has(item.id);
+            const normalized = normalizeScanCode(rawCode);
+            if (!normalized) {
+                return;
+            }
+
+            const matchesById = MOCK_PICK_ITEMS.filter((i) => i.id.toUpperCase() === normalized);
+            const matchesByLocation = matchesById.length === 0
+                ? MOCK_PICK_ITEMS.filter((i) => i.location.toUpperCase() === normalized)
+                : [];
+
+            const matchedItems = matchesById.length > 0 ? matchesById : matchesByLocation;
+
+            if (matchedItems.length > 0) {
                 const updatedSet = new Set(state.pickedItems);
-                if (!alreadyPicked) {
-                    updatedSet.add(item.id);
-                }
+                const newlyPicked = [];
+                const alreadyPicked = [];
+
+                matchedItems.forEach((item) => {
+                    if (updatedSet.has(item.id)) {
+                        alreadyPicked.push(item.id);
+                    } else {
+                        newlyPicked.push(item.id);
+                        updatedSet.add(item.id);
+                    }
+                });
+
+                const locationContext = matchesByLocation.length > 0 ? `locatie ${normalized}` : matchedItems.map(i => i.id).join(', ');
+                const actionMessage = newlyPicked.length > 0
+                    ? `${locationContext}: ${newlyPicked.length} ${newlyPicked.length === 1 ? 'item' : 'items'} toegevoegd aan selectie`
+                    : `${locationContext} was al geselecteerd`;
+
                 setState({
                     pickedItems: updatedSet,
                     scanFeedback: {
                         status: 'success',
-                        message: `${item.id} ${alreadyPicked ? 'was al bevestigd' : 'toegevoegd aan selectie'}`
+                        message: actionMessage
                     }
                 });
             } else {
