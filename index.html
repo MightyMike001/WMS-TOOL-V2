@@ -17,8 +17,23 @@
         .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
         
         /* Smooth transitions for glass cards */
-        .glass-panel { transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
+        .glass-panel { transition: all 0.5s cubic-bezier(0.32, 0.72, 0, 1); }
         .glass-panel:active { transform: scale(0.98); }
+
+        /* --- NIEUWE ANIMATIE LOGICA --- */
+        
+        /* Standaard staat (Expanded) */
+        .kpi-expanded { opacity: 1; transform: translateY(0); transition: all 0.4s ease; pointer-events: auto; }
+        .kpi-compact { opacity: 0; transform: translateY(10px); transition: all 0.4s ease; pointer-events: none; position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; }
+
+        /* Scrolled staat (via class op parent) */
+        .is-scrolled .kpi-expanded { opacity: 0; transform: translateY(-10px); pointer-events: none; }
+        .is-scrolled .kpi-compact { opacity: 1; transform: translateY(0); pointer-events: auto; }
+
+        .is-scrolled .header-profile { opacity: 0; height: 0; overflow: hidden; margin: 0; }
+        .is-scrolled .header-kpi-grid { gap: 0.5rem; height: 3.5rem; } /* h-14 */
+        .is-scrolled .kpi-card { background-color: rgba(255,255,255,0.05); border-color: transparent; padding: 0 !important; }
+        .is-scrolled .header-logout { transform: scale(0.8); padding: 0.5rem; }
     </style>
 </head>
 <body class="bg-[#050505] text-white h-screen w-screen overflow-hidden selection:bg-red-500/30 font-sans transition-colors duration-500" id="body-bg">
@@ -34,12 +49,14 @@
 
     <!-- 3. Applicatie Logica -->
     <script>
-        // --- 1. DATA & STATE (The Single Source of Truth) ---
+        // --- 1. DATA & STATE ---
         
         const MOCK_ORDERS = [
             { id: 'ORD-2025-881', priority: 'high', items: 4, type: 'replenishment', destination: 'WS-PACK-01', status: 'pending' },
             { id: 'ORD-2025-882', priority: 'normal', items: 12, type: 'outbound', destination: 'DOCK-04', status: 'pending' },
             { id: 'ORD-2025-889', priority: 'low', items: 1, type: 'internal', destination: 'LOC-Z-99', status: 'pending' },
+            { id: 'ORD-2025-890', priority: 'normal', items: 8, location: 'A-14-02', status: 'pending' },
+            { id: 'ORD-2025-891', priority: 'low', items: 2, location: 'B-02-11', status: 'pending' },
         ];
 
         const MOCK_PICK_ITEMS = [
@@ -50,30 +67,28 @@
             { id: 'TRUCK-99', name: 'E20 Chassis', qty: 1, location: 'PARK-01', unit: 'st' },
         ];
 
-        // Initial State
         let state = {
-            view: 'login',          // login, dashboard, picking, asset-scan
-            user: null,             // { initials: string }
+            view: 'login',
+            user: null,
             darkMode: true,
             activeOrder: null,
-            pickedItems: new Set(), // Set of IDs
-            scanStep: 0,            // 0-3
+            pickedItems: new Set(),
+            scanStep: 0,
             scannedData: { truck: '', location: '' },
-            isScrolled: false,
             loginInput: '',
             showScanner: false
+            // isScrolled verwijderd uit state om re-renders te voorkomen
         };
 
-        // --- 2. STATE MANAGEMENT HELPERS ---
+        // --- 2. STATE MANAGEMENT ---
 
         function setState(updates) {
             state = { ...state, ...updates };
-            render(); // The core logic: State change = UI redraw
+            render(); 
         }
 
-        // --- 3. UI COMPONENTS (Returning HTML Strings) ---
+        // --- 3. UI COMPONENTS ---
 
-        // Helper to generate dynamic classes based on theme
         const getTheme = () => ({
             bgMain: state.darkMode ? 'bg-[#050505]' : 'bg-[#f0f4f8]',
             textMain: state.darkMode ? 'text-white' : 'text-slate-900',
@@ -104,9 +119,7 @@
                 secondary: "bg-white/10 text-current border-white/10 hover:bg-white/20",
                 success: "bg-emerald-600 text-white shadow-lg shadow-emerald-900/20 border-emerald-500 hover:bg-emerald-500",
             };
-            
             const disabledClass = disabled ? 'opacity-50 grayscale pointer-events-none' : '';
-            
             return `
                 <button onclick="${onClick}" class="w-full py-4 px-6 rounded-2xl font-semibold tracking-wide backdrop-blur-md border flex items-center justify-center gap-3 transition-all active:scale-95 ${variants[variant]} ${disabledClass}">
                     ${icon ? `<i data-lucide="${icon}" width="24" height="24"></i>` : ''}
@@ -127,19 +140,12 @@
                             <i data-lucide="truck" class="text-red-600" width="48" height="48"></i>
                         </div>
                     </div>
-                    
                     <h1 class="text-3xl font-bold mb-2 ${t.textMain}">Warehouse OS</h1>
                     <p class="text-sm mb-8 ${t.textSec}">Voer uw initialen in om te starten</p>
-
                     ${GlassCard(`
                         <div class="flex flex-col gap-4">
                             <label class="text-xs uppercase tracking-widest font-bold ${state.darkMode ? 'text-white/60' : 'text-slate-600'}">Operator ID</label>
-                            <input 
-                                type="text" 
-                                value="${state.loginInput}"
-                                oninput="handleInput(this.value)"
-                                placeholder="AAA"
-                                maxlength="3"
+                            <input type="text" value="${state.loginInput}" oninput="handleInput(this.value)" placeholder="AAA" maxlength="3"
                                 class="w-full bg-transparent text-center text-5xl font-mono font-bold outline-none border-b-2 py-4 tracking-[0.5em] uppercase placeholder:opacity-20 transition-colors ${state.darkMode ? 'text-white border-white/20 focus:border-red-500' : 'text-slate-900 border-slate-300 focus:border-red-500'}"
                             />
                             ${Button('Start Shift', 'handleLogin()', 'primary', 'arrow-right', state.loginInput.length !== 3)}
@@ -151,81 +157,96 @@
 
         function renderDashboard() {
             const t = getTheme();
-            const headerCompact = state.isScrolled;
             
-            // Header HTML
-            const headerHtml = `
-                <div class="flex-none z-20 transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] ${headerCompact ? (state.darkMode ? 'pb-2 pt-2 border-b border-white/5 bg-black/40 backdrop-blur-xl' : 'pb-2 pt-2 border-b border-slate-200 bg-white/60 backdrop-blur-xl') : 'pb-6 pt-0'}">
-                    <div class="flex justify-between items-center transition-all duration-500 ${headerCompact ? 'mb-2' : 'items-end mb-4'}">
-                        <div>
-                            <h2 class="${state.darkMode ? 'text-white/60' : 'text-slate-600'} text-sm font-medium uppercase tracking-widest transition-all ${headerCompact ? 'text-[10px] opacity-0 h-0 overflow-hidden' : 'opacity-100'}">Ingelogd als</h2>
-                            <div class="flex items-center gap-3">
-                                <div class="w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs ${state.darkMode ? 'bg-white text-black' : 'bg-slate-900 text-white'}">
-                                    ${state.user?.initials}
+            // We renderen nu ALTIJD beide versies (expanded en compact) in de DOM.
+            // CSS regelt via de .is-scrolled class welke zichtbaar is.
+            
+            return `
+                <div id="dashboard-view" class="h-full flex flex-col p-6 overflow-hidden transition-all duration-500">
+                    
+                    <!-- STICKY HEADER CONTAINER -->
+                    <div id="dashboard-header" class="flex-none z-20 transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] pb-6 pt-0 border-b border-transparent">
+                        
+                        <!-- PROFILE SECTION -->
+                        <div class="header-profile flex justify-between items-end mb-4 transition-all duration-500">
+                            <div>
+                                <h2 class="${state.darkMode ? 'text-white/60' : 'text-slate-600'} text-sm font-medium uppercase tracking-widest">Ingelogd als</h2>
+                                <div class="flex items-center gap-3">
+                                    <div class="w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs ${state.darkMode ? 'bg-white text-black' : 'bg-slate-900 text-white'}">
+                                        ${state.user?.initials}
+                                    </div>
                                 </div>
                             </div>
-                        </div>
-                        <div class="flex gap-2">
-                             <button onclick="logout()" class="transition-all duration-300 p-3 rounded-full ${state.darkMode ? 'bg-white/5 hover:bg-white/10' : 'bg-white/60 hover:bg-white/80'}">
-                                <i data-lucide="log-out" class="text-red-500" width="${headerCompact ? 20 : 24}"></i>
-                             </button>
-                        </div>
-                    </div>
-
-                    <!-- KPI Section -->
-                    <div class="transition-all duration-500 w-full ${headerCompact ? 'flex gap-2 h-12' : 'grid grid-cols-2 gap-4 h-32'}">
-                         ${GlassCard(`
-                            <div class="w-full h-full flex items-center justify-center ${headerCompact ? 'flex-row gap-3 bg-red-500/10 rounded-xl border border-red-500/20' : 'flex-col gap-2'}">
-                                ${headerCompact 
-                                    ? `<i data-lucide="trending-up" class="${t.textMain}" width="16"></i><span class="${t.textMain} font-bold">42 <span class="text-xs font-normal opacity-60">/u</span></span>`
-                                    : `<span class="text-4xl font-bold ${t.textMain}">42</span><span class="text-xs ${t.textSec} uppercase tracking-wider">Picks / Uur</span>`
-                                }
+                            <!-- Logout Button (Fixed Position in Compact Mode via CSS?) No, just let it scale -->
+                            <div class="header-logout transition-all duration-300">
+                                <button onclick="logout()" class="p-3 rounded-full ${state.darkMode ? 'bg-white/5 hover:bg-white/10' : 'bg-white/60 hover:bg-white/80'}">
+                                    <i data-lucide="log-out" class="text-red-500" width="24"></i>
+                                </button>
                             </div>
-                         `, null, headerCompact ? '!bg-transparent !border-0 !p-0 flex-1' : '!p-5')}
-                         
-                         ${GlassCard(`
-                            <div class="w-full h-full flex items-center justify-center ${headerCompact ? 'flex-row gap-3 bg-emerald-500/10 rounded-xl border border-emerald-500/20' : 'flex-col gap-2'}">
-                                ${headerCompact 
-                                    ? `<i data-lucide="activity" class="text-emerald-500" width="16"></i><span class="text-emerald-500 font-bold">98%</span>`
-                                    : `<span class="text-4xl font-bold text-emerald-500">98%</span><span class="text-xs text-emerald-500/50 uppercase tracking-wider">Accuratesse</span>`
-                                }
-                            </div>
-                         `, null, headerCompact ? '!bg-transparent !border-0 !p-0 flex-1' : '!bg-emerald-500/10 !border-emerald-500/20 !p-5')}
-                    </div>
-                </div>
-            `;
+                        </div>
 
-            // Orders List HTML
-            const ordersHtml = MOCK_ORDERS.map(order => GlassCard(`
-                <div class="flex items-center gap-4">
-                    <div class="w-12 h-12 rounded-full flex items-center justify-center ${order.priority === 'high' ? 'bg-red-500/20 text-red-500' : 'bg-blue-500/20 text-blue-500'}">
-                        <i data-lucide="package" width="20"></i>
-                    </div>
-                    <div>
-                        <h4 class="${t.textMain} font-bold">${order.id}</h4>
-                        <div class="flex items-center gap-2 ${t.textSec} text-sm mt-1">
-                            <i data-lucide="arrow-right" width="12"></i>
-                            <span class="font-mono bg-white/10 px-1 rounded">${order.destination}</span>
-                            <span>•</span>
-                            <span>${order.items} regels</span>
+                        <!-- KPI GRID -->
+                        <div class="header-kpi-grid grid grid-cols-2 gap-4 h-32 transition-all duration-500 w-full relative">
+                             <!-- KPI 1 -->
+                             ${GlassCard(`
+                                <div class="relative w-full h-full">
+                                    <!-- EXPANDED VIEW -->
+                                    <div class="kpi-expanded flex flex-col items-center justify-center h-full gap-2">
+                                        <span class="text-4xl font-bold ${t.textMain}">42</span>
+                                        <span class="text-xs ${t.textSec} uppercase tracking-wider">Picks / Uur</span>
+                                    </div>
+                                    <!-- COMPACT VIEW -->
+                                    <div class="kpi-compact flex flex-row items-center justify-center gap-2">
+                                        <i data-lucide="trending-up" class="${t.textMain}" width="16"></i>
+                                        <span class="${t.textMain} font-bold">42 <span class="text-xs font-normal opacity-60">/u</span></span>
+                                    </div>
+                                </div>
+                             `, null, 'kpi-card !p-5 transition-all duration-500')}
+                             
+                             <!-- KPI 2 -->
+                             ${GlassCard(`
+                                <div class="relative w-full h-full">
+                                    <!-- EXPANDED VIEW -->
+                                    <div class="kpi-expanded flex flex-col items-center justify-center h-full gap-2">
+                                        <span class="text-4xl font-bold text-emerald-500">98%</span>
+                                        <span class="text-xs text-emerald-500/50 uppercase tracking-wider">Accuratesse</span>
+                                    </div>
+                                    <!-- COMPACT VIEW -->
+                                    <div class="kpi-compact flex flex-row items-center justify-center gap-2">
+                                        <i data-lucide="activity" class="text-emerald-500" width="16"></i>
+                                        <span class="text-emerald-500 font-bold">98%</span>
+                                    </div>
+                                </div>
+                             `, null, 'kpi-card !bg-emerald-500/10 !border-emerald-500/20 !p-5 transition-all duration-500')}
                         </div>
                     </div>
-                    <div class="ml-auto">
-                        <i data-lucide="chevron-right" class="${state.darkMode ? 'text-white/60' : 'text-slate-600'}"></i>
-                    </div>
-                </div>
-            `, `openOrder('${order.id}')`, 'group active:scale-[0.98] cursor-pointer')).join('<div class="h-4"></div>');
 
-            return `
-                <div class="h-full flex flex-col p-6 overflow-hidden">
-                    ${headerHtml}
+                    <!-- SCROLLABLE LIST -->
                     <div id="scroll-container" class="flex-1 overflow-y-auto pb-24 no-scrollbar relative mt-4">
                         <div class="sticky top-0 z-10 py-4 backdrop-blur-xl transition-colors ${state.darkMode ? 'bg-[#050505]/80' : 'bg-[#f0f4f8]/80'} flex items-center justify-between mb-2">
                             <h3 class="${t.textMain} text-lg font-semibold">Openstaande Orders</h3>
                             <span class="text-xs bg-red-600 text-white px-2 py-1 rounded-full">${MOCK_ORDERS.length} Totaal</span>
                         </div>
                         <div class="space-y-4">
-                            ${ordersHtml}
+                            ${MOCK_ORDERS.map(order => GlassCard(`
+                                <div class="flex items-center gap-4">
+                                    <div class="w-12 h-12 rounded-full flex items-center justify-center ${order.priority === 'high' ? 'bg-red-500/20 text-red-500' : 'bg-blue-500/20 text-blue-500'}">
+                                        <i data-lucide="package" width="20"></i>
+                                    </div>
+                                    <div>
+                                        <h4 class="${t.textMain} font-bold">${order.id}</h4>
+                                        <div class="flex items-center gap-2 ${t.textSec} text-sm mt-1">
+                                            <i data-lucide="arrow-right" width="12"></i>
+                                            <span class="font-mono bg-white/10 px-1 rounded">${order.destination}</span>
+                                            <span>•</span>
+                                            <span>${order.items} regels</span>
+                                        </div>
+                                    </div>
+                                    <div class="ml-auto">
+                                        <i data-lucide="chevron-right" class="${state.darkMode ? 'text-white/60' : 'text-slate-600'}"></i>
+                                    </div>
+                                </div>
+                            `, `openOrder('${order.id}')`, 'group active:scale-[0.98] cursor-pointer')).join('<div class="h-4"></div>')}
                         </div>
                     </div>
                     ${renderNav()}
@@ -236,7 +257,6 @@
         function renderPicking() {
             const t = getTheme();
             if (!state.activeOrder) return '';
-
             const itemsHtml = MOCK_PICK_ITEMS.map(item => {
                 const isSelected = state.pickedItems.has(item.id);
                 const borderClass = isSelected 
@@ -276,27 +296,14 @@
                             <h1 class="text-2xl font-mono font-bold text-red-500">${state.activeOrder.destination}</h1>
                         </div>
                     </div>
-
-                    <div class="p-4 rounded-xl mb-4 text-sm ${state.darkMode ? 'bg-blue-500/10 text-blue-200 border border-blue-500/20' : 'bg-blue-50 text-blue-800 border border-blue-200'}">
-                        Selecteer items voor verplaatsing.
-                    </div>
-
-                    <div class="flex-1 overflow-y-auto space-y-3 pr-1 pb-4 no-scrollbar">
-                        ${itemsHtml}
-                    </div>
-
+                    <div class="p-4 rounded-xl mb-4 text-sm ${state.darkMode ? 'bg-blue-500/10 text-blue-200 border border-blue-500/20' : 'bg-blue-50 text-blue-800 border border-blue-200'}">Selecteer items.</div>
+                    <div class="flex-1 overflow-y-auto space-y-3 pr-1 pb-4 no-scrollbar">${itemsHtml}</div>
                     <div class="mt-4 pt-4 border-t ${state.darkMode ? 'border-white/10' : 'border-slate-200'}">
                         <div class="flex justify-between items-center mb-4 px-2">
                             <span class="${t.textSec}">Geselecteerd</span>
                             <span class="${t.textMain} font-bold text-xl">${state.pickedItems.size} <span class="text-sm font-normal opacity-50">/ ${MOCK_PICK_ITEMS.length}</span></span>
                         </div>
-                        ${Button(
-                            state.pickedItems.size > 0 ? `Verplaats ${state.pickedItems.size} Items` : "Selecteer Items",
-                            'confirmPicking()',
-                            state.pickedItems.size > 0 ? 'success' : 'secondary',
-                            'arrow-right',
-                            state.pickedItems.size === 0
-                        )}
+                        ${Button(state.pickedItems.size > 0 ? `Verplaats ${state.pickedItems.size} Items` : "Selecteer Items", 'confirmPicking()', state.pickedItems.size > 0 ? 'success' : 'secondary', 'arrow-right', state.pickedItems.size === 0)}
                     </div>
                 </div>
             `;
@@ -305,12 +312,9 @@
         function renderAssetScan() {
             const t = getTheme();
             const { scanStep, scannedData } = state;
-
-            // Render logic specifically for steps
             let content = '';
 
             if (scanStep === 3) {
-                 // Success
                  content = `
                     <div class="absolute inset-0 z-50 flex flex-col items-center justify-center animate-pulse rounded-3xl border ${state.darkMode ? 'bg-black/80 border-white/10' : 'bg-white/90 border-slate-200'} backdrop-blur-xl">
                         <div class="bg-emerald-500/20 p-6 rounded-full mb-6 border border-emerald-500/50">
@@ -323,9 +327,7 @@
             } else {
                 content = `
                      <div class="flex-1 flex flex-col justify-start pt-4 space-y-6 relative pb-10">
-                        <!-- Connector Line -->
                         <div class="absolute left-6 top-6 bottom-12 w-0.5 ${state.darkMode ? 'bg-white/10' : 'bg-slate-200'} -z-10"></div>
-
                         <!-- Step 1 -->
                         <div class="w-full transition-all duration-500 ${scanStep > 1 ? 'opacity-50' : 'opacity-100'}">
                             <div class="flex gap-4">
@@ -335,14 +337,10 @@
                                 ${GlassCard(`
                                     <h3 class="${state.darkMode ? 'text-white/60' : 'text-slate-600'} text-sm uppercase mb-1 font-medium tracking-wider">Stap 1</h3>
                                     <div class="text-xl font-bold ${t.textMain} mb-3">Scan Heftruck ID</div>
-                                    ${scannedData.truck 
-                                        ? `<div class="bg-emerald-500/10 border border-emerald-500/20 rounded-xl p-3 flex items-center gap-3"><i data-lucide="truck" class="text-emerald-500" width="16"></i><span class="text-emerald-500 font-mono text-lg">${scannedData.truck}</span></div>`
-                                        : Button('Scan Chassis', 'openScanner()', 'primary', 'scan')
-                                    }
+                                    ${scannedData.truck ? `<div class="bg-emerald-500/10 border border-emerald-500/20 rounded-xl p-3 flex items-center gap-3"><i data-lucide="truck" class="text-emerald-500" width="16"></i><span class="text-emerald-500 font-mono text-lg">${scannedData.truck}</span></div>` : Button('Scan Chassis', 'openScanner()', 'primary', 'scan')}
                                 `, null, 'flex-1')}
                             </div>
                         </div>
-
                         <!-- Step 2 -->
                          <div class="w-full transition-all duration-500 ${scanStep === 0 ? 'opacity-30 blur-[1px]' : ''}">
                             <div class="flex gap-4">
@@ -352,27 +350,16 @@
                                 ${GlassCard(`
                                     <h3 class="${state.darkMode ? 'text-white/60' : 'text-slate-600'} text-sm uppercase mb-1 font-medium tracking-wider">Stap 2</h3>
                                     <div class="text-xl font-bold ${t.textMain} mb-3">Scan Locatie</div>
-                                    ${scannedData.location 
-                                        ? `<div class="bg-emerald-500/10 border border-emerald-500/20 rounded-xl p-3 flex items-center gap-3"><i data-lucide="map-pin" class="text-emerald-500" width="16"></i><span class="text-emerald-500 font-mono text-lg">${scannedData.location}</span></div>`
-                                        : Button('Scan Locatie', scanStep >= 1 ? 'openScanner()' : '', scanStep >= 1 ? 'primary' : 'secondary', 'scan', scanStep === 0)
-                                    }
+                                    ${scannedData.location ? `<div class="bg-emerald-500/10 border border-emerald-500/20 rounded-xl p-3 flex items-center gap-3"><i data-lucide="map-pin" class="text-emerald-500" width="16"></i><span class="text-emerald-500 font-mono text-lg">${scannedData.location}</span></div>` : Button('Scan Locatie', scanStep >= 1 ? 'openScanner()' : '', scanStep >= 1 ? 'primary' : 'secondary', 'scan', scanStep === 0)}
                                 `, null, 'flex-1')}
                             </div>
                         </div>
-
-                        <!-- Confirmation -->
                         ${scanStep === 2 ? GlassCard(`
                             <div class="flex items-start gap-4 mb-4">
                                 <div class="bg-yellow-500/20 p-3 rounded-full text-yellow-500"><i data-lucide="alert-triangle" width="24"></i></div>
-                                <div>
-                                    <h3 class="${t.textMain} font-bold text-lg">Bevestig Koppeling</h3>
-                                    <p class="${t.textSec} text-sm mt-1">Koppel truck <strong>${scannedData.truck}</strong> aan <strong>${scannedData.location}</strong>?</p>
-                                </div>
+                                <div><h3 class="${t.textMain} font-bold text-lg">Bevestig</h3><p class="${t.textSec} text-sm mt-1">Koppel truck <strong>${scannedData.truck}</strong> aan <strong>${scannedData.location}</strong>?</p></div>
                             </div>
-                            <div class="flex gap-3 mt-4">
-                                <button onclick="resetLoc()" class="flex-1 py-3 rounded-xl bg-white/10 text-white">Wijzig</button>
-                                <button onclick="confirmAssetLink()" class="flex-1 py-3 rounded-xl bg-emerald-600 text-white shadow-lg shadow-emerald-900/20">Bevestig</button>
-                            </div>
+                            <div class="flex gap-3 mt-4"><button onclick="resetLoc()" class="flex-1 py-3 rounded-xl bg-white/10 text-white">Wijzig</button><button onclick="confirmAssetLink()" class="flex-1 py-3 rounded-xl bg-emerald-600 text-white shadow-lg">Bevestig</button></div>
                         `, null, 'border-l-4 border-l-yellow-500 animate-pulse') : ''}
                     </div>
                 `;
@@ -381,9 +368,7 @@
             return `
                  <div class="h-full flex flex-col p-6 overflow-hidden">
                     <div class="flex items-center gap-4 mb-6 shrink-0">
-                        <button onclick="navigate('dashboard')" class="p-3 rounded-full ${state.darkMode ? 'bg-white/10 hover:bg-white/20 text-white' : 'bg-white border border-slate-200 hover:bg-slate-50 text-slate-900'} transition-colors">
-                            <i data-lucide="arrow-left" width="24"></i>
-                        </button>
+                        <button onclick="navigate('dashboard')" class="p-3 rounded-full ${state.darkMode ? 'bg-white/10 hover:bg-white/20 text-white' : 'bg-white border border-slate-200 hover:bg-slate-50 text-slate-900'} transition-colors"><i data-lucide="arrow-left" width="24"></i></button>
                         <h1 class="text-xl font-bold ${t.textMain}">Heftruck Lokalisatie</h1>
                     </div>
                     ${content}
@@ -417,136 +402,64 @@
                         <div class="absolute top-1/2 left-4 right-4 h-0.5 bg-red-500 shadow-[0_0_20px_rgba(239,68,68,0.8)] animate-[ping_1.5s_cubic-bezier(0,0,0.2,1)_infinite]"></div>
                         <div class="absolute bottom-6 left-0 right-0 text-center text-white/70 font-mono text-sm">Richt op barcode</div>
                     </div>
-                    <h3 class="text-white text-xl font-bold mb-8">Scannen...</h3>
-                    <div class="grid gap-4 w-full max-w-xs">
-                        ${Button('Simuleer Scan', 'handleScan()', 'primary')}
-                        <button onclick="closeScanner()" class="text-white/50 text-sm py-4">Annuleren</button>
-                    </div>
+                    <div class="grid gap-4 w-full max-w-xs">${Button('Simuleer Scan', 'handleScan()', 'primary')}<button onclick="closeScanner()" class="text-white/50 text-sm py-4">Annuleren</button></div>
                 </div>
             `;
         }
 
-        // --- 5. LOGIC HANDLERS (Global Scope for HTML Onclick) ---
-
-        window.handleInput = (val) => {
-            state.loginInput = val.toUpperCase();
-            render(); // Re-render to update button disabled state
-            // Keep focus (a bit hacky in full re-render, ideally strictly update DOM, but fine for prototype)
-            const input = document.querySelector('input');
-            if(input) {
-                input.focus();
-                input.setSelectionRange(input.value.length, input.value.length);
-            }
-        };
-
-        window.handleLogin = () => {
-            if (state.loginInput.length === 3) {
-                setState({ user: { initials: state.loginInput }, view: 'dashboard' });
-            }
-        };
-
+        // --- 5. HANDLERS ---
+        window.handleInput = (val) => { state.loginInput = val.toUpperCase(); render(); const i=document.querySelector('input'); if(i){i.focus(); i.setSelectionRange(i.value.length,i.value.length);} };
+        window.handleLogin = () => { if (state.loginInput.length === 3) setState({ user: { initials: state.loginInput }, view: 'dashboard' }); };
         window.logout = () => setState({ user: null, view: 'login', loginInput: '' });
-        
         window.navigate = (view) => setState({ view });
-        
-        window.toggleTheme = () => {
-            setState({ darkMode: !state.darkMode });
-            // Update Body Classes immediately
-            const body = document.body;
-            if (!state.darkMode) {
-                body.classList.remove('bg-[#050505]', 'text-white');
-                body.classList.add('bg-[#f0f4f8]', 'text-slate-900');
-            } else {
-                body.classList.add('bg-[#050505]', 'text-white');
-                body.classList.remove('bg-[#f0f4f8]', 'text-slate-900');
-            }
-        };
-
-        window.openOrder = (id) => {
-            const order = MOCK_ORDERS.find(o => o.id === id);
-            setState({ activeOrder: order, view: 'picking', pickedItems: new Set() });
-        };
-
-        window.togglePickItem = (id) => {
-            const newSet = new Set(state.pickedItems);
-            if (newSet.has(id)) newSet.delete(id);
-            else newSet.add(id);
-            setState({ pickedItems: newSet });
-        };
-
-        window.confirmPicking = () => {
-            alert(`${state.pickedItems.size} items verplaatst!`);
-            setState({ view: 'dashboard', activeOrder: null });
-        };
-
+        window.toggleTheme = () => { setState({ darkMode: !state.darkMode }); const b=document.body; if(!state.darkMode){b.classList.remove('bg-[#050505]','text-white');b.classList.add('bg-[#f0f4f8]','text-slate-900');}else{b.classList.add('bg-[#050505]','text-white');b.classList.remove('bg-[#f0f4f8]','text-slate-900');} };
+        window.openOrder = (id) => { const o = MOCK_ORDERS.find(x=>x.id===id); setState({ activeOrder: o, view: 'picking', pickedItems: new Set() }); };
+        window.togglePickItem = (id) => { const s = new Set(state.pickedItems); if(s.has(id))s.delete(id);else s.add(id); setState({ pickedItems: s }); };
+        window.confirmPicking = () => { alert(`${state.pickedItems.size} items!`); setState({ view: 'dashboard', activeOrder: null }); };
         window.openScanner = () => setState({ showScanner: true });
         window.closeScanner = () => setState({ showScanner: false });
-
-        window.handleScan = () => {
-            // Mock logic
-            if (state.view === 'asset-scan') {
-                if (state.scanStep === 0) {
-                    setState({ showScanner: false, scannedData: { ...state.scannedData, truck: 'LIN-E20-449' }, scanStep: 1 });
-                } else if (state.scanStep === 1) {
-                    setState({ showScanner: false, scannedData: { ...state.scannedData, location: 'PARK-Z-04' }, scanStep: 2 });
-                }
-            }
-        };
-
+        window.handleScan = () => { if(state.view === 'asset-scan') { if(state.scanStep===0) setState({showScanner:false, scannedData:{...state.scannedData, truck:'LIN-E20'}, scanStep:1}); else if(state.scanStep===1) setState({showScanner:false, scannedData:{...state.scannedData, location:'PARK-04'}, scanStep:2}); }};
         window.resetLoc = () => setState({ scanStep: 1, scannedData: { ...state.scannedData, location: '' } });
+        window.confirmAssetLink = () => { setState({ scanStep: 3 }); setTimeout(() => { setState({ scanStep: 0, scannedData: { truck: '', location: '' } }); }, 2500); };
 
-        window.confirmAssetLink = () => {
-            setState({ scanStep: 3 });
-            setTimeout(() => {
-                setState({ scanStep: 0, scannedData: { truck: '', location: '' } });
-            }, 2500);
-        };
-
-        // Scroll Handler Logic
+        // --- SCROLL LOGIC (The Fix) ---
+        // We do NOT render() here. We manipulate the DOM classes directly.
         function attachScrollListener() {
             const container = document.getElementById('scroll-container');
-            if (container) {
+            const header = document.getElementById('dashboard-view'); // Parent container for context styles
+            const headerInner = document.getElementById('dashboard-header');
+            
+            if (container && header) {
                 container.addEventListener('scroll', (e) => {
                     const isScrolled = e.target.scrollTop > 20;
-                    if (isScrolled !== state.isScrolled) {
-                        state.isScrolled = isScrolled;
-                        render(); // Trigger re-render for header animation
-                        // Restore scroll position after render
-                        const newContainer = document.getElementById('scroll-container');
-                        if(newContainer) newContainer.scrollTop = e.target.scrollTop; 
+                    if (isScrolled) {
+                        header.classList.add('is-scrolled');
+                        // Optional: Add visual backdrop if needed separately
+                         headerInner.classList.add(state.darkMode ? 'bg-black/40' : 'bg-white/60', 'backdrop-blur-xl', 'border-white/5');
+                    } else {
+                        header.classList.remove('is-scrolled');
+                        headerInner.classList.remove('bg-black/40', 'bg-white/60', 'backdrop-blur-xl', 'border-white/5');
                     }
                 });
             }
         }
 
-        // --- 6. CORE RENDER LOOP ---
-
         function render() {
             const app = document.getElementById('app');
             let html = '';
-
             switch (state.view) {
                 case 'login': html = renderLogin(); break;
                 case 'dashboard': html = renderDashboard(); break;
                 case 'picking': html = renderPicking(); break;
                 case 'asset-scan': html = renderAssetScan(); break;
             }
-
-            // Append Scanner Overlay if active
             html += renderScanner();
-
             app.innerHTML = html;
-            
-            // Re-initialize Icons
             lucide.createIcons();
-            
-            // Re-attach listeners that can't be inline
             attachScrollListener();
         }
 
-        // Start App
         render();
-
     </script>
 </body>
 </html>
