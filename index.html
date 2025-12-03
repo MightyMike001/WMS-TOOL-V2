@@ -601,6 +601,7 @@
         window.executePicking = () => {
             const itemsToKeep = MOCK_PICK_ITEMS.filter(item => !state.pickedItems.has(item.id));
             const count = state.pickedItems.size;
+            const orderId = state.activeOrder?.id || '';
 
             const remainingItems = Math.max((state.activeOrder?.items || 0) - count, 0);
             const totalItems = state.activeOrder?.totalItems || state.activeOrder?.items || 0;
@@ -624,21 +625,25 @@
             }
 
             const newPicks = Math.min(60, Math.max(30, state.stats.picksPerHour + (Math.random() > 0.5 ? 1 : -1)));
+            const hasRemainingPickLines = MOCK_PICK_ITEMS.length > 0;
+            const nextView = newStatus === 'completed' ? 'dashboard' : (hasRemainingPickLines ? 'picking' : 'dashboard');
 
             setState({
-                view: MOCK_PICK_ITEMS.length > 0 ? 'picking' : 'dashboard',
+                view: nextView,
                 activeOrder: newStatus === 'completed' ? null : updatedOrder,
                 pickedItems: new Set(),
                 showConfirmationModal: false,
+                scanFeedback: null,
+                manualScanInput: '',
                 stats: {
                     ...state.stats,
                     picksPerHour: newPicks,
                     totalPicksShift: state.stats.totalPicksShift + count
                 }
             });
-            // We blijven op de picking pagina als er nog items zijn (Partial Pick), anders terug naar dashboard
-            if (MOCK_PICK_ITEMS.length === 0) {
-                setTimeout(() => alert(`Order ${state.activeOrder?.id || ''} voltooid!`), 100);
+
+            if (newStatus === 'completed') {
+                setTimeout(() => alert(`Order ${orderId} voltooid!`), 100);
             }
         };
         // --- EINDE MODAL HANDLERS ---
