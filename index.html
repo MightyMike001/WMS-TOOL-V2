@@ -380,17 +380,17 @@
             const t = getTheme();
             return GlassCard(`
                 <div class="flex justify-around items-center">
-                    <button onclick="navigate('dashboard')" class="p-3 rounded-xl transition-colors ${state.view === 'dashboard' ? 'text-red-500 bg-red-500/10' : `${t.textSec} hover:${t.textMain}`}">
-                        <i data-lucide="box" width="24"></i>
+                    <button onclick="navigate('dashboard')" class="p-2 rounded-xl transition-colors ${state.view === 'dashboard' ? 'text-red-500 bg-red-500/10' : `${t.textSec} hover:${t.textMain}`}">
+                        <i data-lucide="box" width="20"></i>
                     </button>
-                    <button onclick="navigate('asset-scan')" class="p-3 rounded-xl transition-colors ${state.view === 'asset-scan' ? 'text-red-500 bg-red-500/10' : `${t.textSec} hover:${t.textMain}`}">
-                        <i data-lucide="truck" width="24"></i>
+                    <button onclick="navigate('asset-scan')" class="p-2 rounded-xl transition-colors ${state.view === 'asset-scan' ? 'text-red-500 bg-red-500/10' : `${t.textSec} hover:${t.textMain}`}">
+                        <i data-lucide="truck" width="20"></i>
                     </button>
-                    <button onclick="toggleTheme()" class="p-3 rounded-xl transition-colors ${state.darkMode ? 'text-yellow-400 hover:bg-white/10' : 'text-slate-600 hover:bg-black/5'}">
-                        <i data-lucide="${state.darkMode ? 'sun' : 'moon'}" width="24"></i>
+                    <button onclick="toggleTheme()" class="p-2 rounded-xl transition-colors ${state.darkMode ? 'text-yellow-400 hover:bg-white/10' : 'text-slate-600 hover:bg-black/5'}">
+                        <i data-lucide="${state.darkMode ? 'sun' : 'moon'}" width="20"></i>
                     </button>
                 </div>
-            `, null, `mt-4 !p-2 flex-none ${t.navGlass} !rounded-2xl`);
+            `, null, `mt-2 !p-1.5 flex-none ${t.navGlass} !rounded-xl`);
         }
 
         function renderScanner() {
