@@ -120,6 +120,7 @@
             darkMode: true,
             activeOrder: null,
             pickItems: [],
+            pickItemSearch: '',
             pickedItems: new Set(),
             isLoadingOrderLines: false,
             orderLineError: null,
@@ -242,6 +243,7 @@
                 isLoadingOrderLines: true,
                 orderLineError: null,
                 pickItems: [],
+                pickItemSearch: '',
                 pickedItems: new Set(),
                 scanFeedback: null
             });
@@ -499,34 +501,55 @@
                     'border-dashed border border-white/10'
                 );
             } else {
-                itemsHtml = state.pickItems.map(item => {
-                    const isSelected = state.pickedItems.has(item.id);
-                    const borderClass = isSelected
-                        ? (state.darkMode ? 'border-emerald-500/50 bg-emerald-500/10' : 'border-emerald-500 bg-emerald-50')
-                        : '';
-                    const checkBg = isSelected
-                        ? 'bg-emerald-500 text-white border-emerald-500'
-                        : (state.darkMode ? 'bg-white/5 border-white/10' : 'bg-slate-50 border-slate-200');
+                const searchTerm = state.pickItemSearch.trim().toLowerCase();
+                const filteredItems = !searchTerm
+                    ? state.pickItems
+                    : state.pickItems.filter(item => {
+                        const name = (item.name || '').toLowerCase();
+                        const id = (item.id || '').toLowerCase();
+                        const location = (item.location || '').toLowerCase();
+                        return name.includes(searchTerm) || id.includes(searchTerm) || location.includes(searchTerm);
+                    });
 
-                    // Padding verlaagd en margins aangepast voor compactere lijst
-                    return GlassCard(`
-                        <div class="flex items-stretch min-h-[4rem] -m-3">
-                            <div class="w-12 flex items-center justify-center border-r transition-colors ${checkBg}">
-                                <i data-lucide="${isSelected ? 'check-square' : 'square'}" width="20" class="${isSelected ? 'text-white' : (state.darkMode ? 'text-white/60' : 'text-slate-400')}"></i>
-                            </div>
-                            <div class="flex-1 p-3 flex flex-col justify-center">
-                                <div class="flex justify-between items-start">
-                                    <span class="text-[10px] font-mono px-1.5 py-0.5 rounded mb-0.5 inline-block ${state.darkMode ? 'bg-white/10' : 'bg-slate-200 text-slate-700'}">
-                                        ${item.location}
-                                    </span>
-                                    <span class="${t.textMain} font-bold text-base">${item.qty} <span class="text-[10px] font-normal opacity-60">${item.unit}</span></span>
+                if (!filteredItems || filteredItems.length === 0) {
+                    itemsHtml = GlassCard(
+                        `<div class="flex items-center gap-2 text-sm ${t.textSec}">
+                            <i data-lucide="inbox" width="16"></i>
+                            Geen orderregels gevonden voor deze filter.
+                        </div>`,
+                        null,
+                        'border-dashed border border-white/10'
+                    );
+                } else {
+                    itemsHtml = filteredItems.map(item => {
+                        const isSelected = state.pickedItems.has(item.id);
+                        const borderClass = isSelected
+                            ? (state.darkMode ? 'border-emerald-500/50 bg-emerald-500/10' : 'border-emerald-500 bg-emerald-50')
+                            : '';
+                        const checkBg = isSelected
+                            ? 'bg-emerald-500 text-white border-emerald-500'
+                            : (state.darkMode ? 'bg-white/5 border-white/10' : 'bg-slate-50 border-slate-200');
+
+                        // Padding verlaagd en margins aangepast voor compactere lijst
+                        return GlassCard(`
+                            <div class="flex items-stretch min-h-[4rem] -m-3">
+                                <div class="w-12 flex items-center justify-center border-r transition-colors ${checkBg}">
+                                    <i data-lucide="${isSelected ? 'check-square' : 'square'}" width="20" class="${isSelected ? 'text-white' : (state.darkMode ? 'text-white/60' : 'text-slate-400')}"></i>
                                 </div>
-                                <h4 class="${t.textMain} font-bold text-sm leading-tight truncate">${item.name}</h4>
-                                <div class="${t.textSec} text-[10px] font-mono mt-0.5">${item.id}</div>
+                                <div class="flex-1 p-3 flex flex-col justify-center">
+                                    <div class="flex justify-between items-start">
+                                        <span class="text-[10px] font-mono px-1.5 py-0.5 rounded mb-0.5 inline-block ${state.darkMode ? 'bg-white/10' : 'bg-slate-200 text-slate-700'}">
+                                            ${item.location}
+                                        </span>
+                                        <span class="${t.textMain} font-bold text-base">${item.qty} <span class="text-[10px] font-normal opacity-60">${item.unit}</span></span>
+                                    </div>
+                                    <h4 class="${t.textMain} font-bold text-sm leading-tight truncate">${item.name}</h4>
+                                    <div class="${t.textSec} text-[10px] font-mono mt-0.5">${item.id}</div>
+                                </div>
                             </div>
-                        </div>
-                    `, `togglePickItem('${item.id}')`, `transition-all duration-200 ${borderClass} !p-0`);
-                }).join('<div class="h-2"></div>');
+                        `, `togglePickItem('${item.id}')`, `transition-all duration-200 ${borderClass} !p-0`);
+                    }).join('<div class="h-2"></div>');
+                }
             }
 
             return `
@@ -557,7 +580,19 @@
                             ${state.scanFeedback ? `<div class="text-xs px-3 py-2 rounded-lg border ${state.scanFeedback.status === 'success' ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-200' : 'bg-amber-500/10 border-amber-500/30 text-amber-200'}">${state.scanFeedback.message}</div>` : ''}
                         </div>
                     `, null, 'mb-3')}
-                    <div class="p-3 rounded-xl mb-3 text-xs ${state.darkMode ? 'bg-blue-500/10 text-blue-200 border border-blue-500/20' : 'bg-blue-50 text-blue-800 border border-blue-200'}">Selecteer items.</div>
+                    <div class="p-3 rounded-xl mb-3 ${state.darkMode ? 'bg-white/5 border-white/10' : 'bg-white border border-slate-200'}">
+                        <div class="flex items-center gap-2">
+                            <i data-lucide="search" width="16" class="${state.darkMode ? 'text-white/60' : 'text-slate-500'}"></i>
+                            <input
+                                type="text"
+                                value="${state.pickItemSearch}"
+                                oninput="setPickItemSearch(this.value)"
+                                placeholder="Selecteer items: zoek op naam, SKU of locatie"
+                                class="flex-1 bg-transparent outline-none text-sm ${state.darkMode ? 'text-white placeholder:text-white/40' : 'text-slate-900 placeholder:text-slate-400'}"
+                            />
+                            ${state.pickItemSearch ? `<button onclick="setPickItemSearch('')" class="text-xs ${state.darkMode ? 'text-white/60 hover:text-white' : 'text-slate-500 hover:text-slate-700'}">Wissen</button>` : ''}
+                        </div>
+                    </div>
                     <div class="flex-1 overflow-y-auto space-y-2 pr-1 pb-4 no-scrollbar">${itemsHtml}</div>
                     <div class="mt-2 pt-2 border-t ${state.darkMode ? 'border-white/10' : 'border-slate-200'}">
                         <div class="flex justify-between items-center mb-2 px-1">
@@ -734,6 +769,7 @@
                 activeOrder: order,
                 view: 'picking',
                 pickedItems: new Set(),
+                pickItemSearch: '',
                 isEditingDestination: false,
                 scanFeedback: null,
                 orderLineError: null,
@@ -742,6 +778,7 @@
             loadOrderLines(order.id);
         };
         window.togglePickItem = (id) => { const s = new Set(state.pickedItems); if(s.has(id))s.delete(id);else s.add(id); setState({ pickedItems: s }); };
+        window.setPickItemSearch = (value) => { setState({ pickItemSearch: value }); };
         window.setManualScanInput = (value) => { setState({ manualScanInput: value.toUpperCase() }); };
         window.submitManualScan = () => {
             const code = state.manualScanInput.trim();
