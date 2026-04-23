@@ -55,7 +55,7 @@
 
     <script type="module">
         import { getOrderLineCountsForOrder as deriveOrderLineCounts } from './orderLogic.js';
-        import { findMatchingItems, normalizeScanCode } from './scanUtils.js';
+        import { findMatchingAssets, findMatchingItems, findMatchingLocations, normalizeScanCode } from './scanUtils.js';
 
         // --- 1. DATA & STATE ---
         // Let op: In een echte app zouden MOCK_ORDERS en de bijbehorende orderregels uit een database komen.
@@ -204,6 +204,8 @@
             moveDestinationInput: '',
             moveSelectedAssetSerial: '',
             moveFeedback: null,
+            wmsScanInput: '',
+            wmsScanFeedback: null,
         };
 
         // --- 2. STATE MANAGEMENT ---
@@ -565,6 +567,7 @@
                                 <button onclick="lookupMoveAsset()" class="px-3 rounded-xl border text-xs font-semibold ${state.darkMode ? 'border-white/20 bg-white/10 hover:bg-white/15' : 'border-slate-300 bg-slate-100 hover:bg-slate-200'}">Zoek</button>
                             </div>
                             <p class="${t.textSec} text-[11px] mt-2">Serienummer is leidend; device-nummer is fallback.</p>
+                            <p class="${t.textSec} text-[11px]">Tip: scan een locatiecode om doellocatie automatisch te vullen.</p>
                         </div>
 
                         <div class="p-3 rounded-xl border ${selectedAsset ? 'border-emerald-500/40 bg-emerald-500/10' : `${state.darkMode ? 'border-white/10 bg-white/5' : 'border-slate-200 bg-white'}`}">
@@ -597,6 +600,14 @@
             if (state.wmsView === 'tasks') {
                 return `
                     <p class="${t.textSec} text-xs uppercase tracking-widest mb-2">Open verplaatsopdrachten</p>
+                    <div class="p-3 rounded-xl border ${state.darkMode ? 'border-white/10 bg-white/5' : 'border-slate-200 bg-white'} mb-2">
+                        <p class="${t.textSec} text-[10px] uppercase tracking-widest mb-1">Scan opdracht / serial / locatie</p>
+                        <div class="flex gap-2">
+                            <input type="text" value="${state.wmsScanInput}" oninput="setWmsScanInput(this.value)" placeholder="Scan of typ code" class="w-full bg-transparent border rounded-xl px-3 py-2 text-sm font-mono outline-none ${state.darkMode ? 'border-white/20 text-white placeholder:text-white/30 focus:border-red-400' : 'border-slate-300 text-slate-900 placeholder:text-slate-400 focus:border-red-500'}" />
+                            <button onclick="submitWmsScan('tasks')" class="px-3 rounded-xl border text-xs font-semibold ${state.darkMode ? 'border-white/20 bg-white/10 hover:bg-white/15' : 'border-slate-300 bg-slate-100 hover:bg-slate-200'}">Verwerk</button>
+                        </div>
+                    </div>
+                    ${state.wmsScanFeedback ? `<div class="p-3 rounded-xl border ${state.wmsScanFeedback.status === 'success' ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-300' : 'border-amber-500/40 bg-amber-500/10 text-amber-200'} text-xs mb-2">${state.wmsScanFeedback.message}</div>` : ''}
                     <div class="space-y-2">
                         ${MOCK_OPEN_MOVES.map(move => `
                             <div class="p-3 rounded-xl border ${state.darkMode ? 'border-white/10 bg-white/5' : 'border-slate-200 bg-white'}">
@@ -612,6 +623,14 @@
             if (state.wmsView === 'receive') {
                 return `
                     <p class="${t.textSec} text-xs uppercase tracking-widest mb-2">Ontvangsten</p>
+                    <div class="p-3 rounded-xl border ${state.darkMode ? 'border-white/10 bg-white/5' : 'border-slate-200 bg-white'} mb-2">
+                        <p class="${t.textSec} text-[10px] uppercase tracking-widest mb-1">Scan ontvangst / serial / dock</p>
+                        <div class="flex gap-2">
+                            <input type="text" value="${state.wmsScanInput}" oninput="setWmsScanInput(this.value)" placeholder="Scan of typ code" class="w-full bg-transparent border rounded-xl px-3 py-2 text-sm font-mono outline-none ${state.darkMode ? 'border-white/20 text-white placeholder:text-white/30 focus:border-red-400' : 'border-slate-300 text-slate-900 placeholder:text-slate-400 focus:border-red-500'}" />
+                            <button onclick="submitWmsScan('receive')" class="px-3 rounded-xl border text-xs font-semibold ${state.darkMode ? 'border-white/20 bg-white/10 hover:bg-white/15' : 'border-slate-300 bg-slate-100 hover:bg-slate-200'}">Verwerk</button>
+                        </div>
+                    </div>
+                    ${state.wmsScanFeedback ? `<div class="p-3 rounded-xl border ${state.wmsScanFeedback.status === 'success' ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-300' : 'border-amber-500/40 bg-amber-500/10 text-amber-200'} text-xs mb-2">${state.wmsScanFeedback.message}</div>` : ''}
                     <div class="space-y-2">
                         ${MOCK_RECEIPTS.map(receipt => `
                             <div class="p-3 rounded-xl border ${state.darkMode ? 'border-white/10 bg-white/5' : 'border-slate-200 bg-white'}">
@@ -1092,48 +1111,133 @@
         window.navigateWms = (view) => {
             const allowed = ['login', 'dashboard', 'move', 'tasks', 'receive', 'history'];
             if (allowed.includes(view)) {
-                setState({ wmsView: view });
+                setState({ wmsView: view, wmsScanInput: '', wmsScanFeedback: null });
             }
         };
         window.setMoveSearchInput = (value) => {
-            setState({ moveSearchInput: value.toUpperCase(), moveFeedback: null });
+            setState({ moveSearchInput: value.toUpperCase(), moveFeedback: null, wmsScanFeedback: null });
         };
         window.setMoveDestinationInput = (value) => {
-            setState({ moveDestinationInput: value.toUpperCase(), moveFeedback: null });
+            setState({ moveDestinationInput: value.toUpperCase(), moveFeedback: null, wmsScanFeedback: null });
         };
         window.lookupMoveAsset = () => {
-            const query = (state.moveSearchInput || '').trim().toUpperCase();
-            if (!query) {
+            const query = state.moveSearchInput || '';
+            const { matchedItems, matchedBy, normalizedCode } = findMatchingAssets(query, MOCK_ASSETS);
+
+            if (!normalizedCode) {
                 setState({ moveSelectedAssetSerial: '', moveFeedback: { status: 'warning', message: 'Scan of typ eerst een serienummer of device-nummer.' } });
                 return;
             }
 
-            const serialMatch = MOCK_ASSETS.find(asset => asset.serial.toUpperCase() === query);
-            const deviceMatch = MOCK_ASSETS.find(asset => asset.deviceNumber.toUpperCase() === query);
-            const match = serialMatch || deviceMatch;
-
-            if (!match) {
-                setState({ moveSelectedAssetSerial: '', moveFeedback: { status: 'warning', message: `Geen asset gevonden voor code ${query}.` } });
+            if (!matchedItems.length || matchedBy === 'location') {
+                setState({ moveSelectedAssetSerial: '', moveFeedback: { status: 'warning', message: `Geen asset gevonden voor code ${normalizedCode}.` } });
                 return;
             }
 
+            const match = matchedItems[0];
             setState({
+                moveSearchInput: match[matchedBy],
                 moveSelectedAssetSerial: match.serial,
                 moveFeedback: {
                     status: 'success',
-                    message: `Asset ${match.serial} gevonden op ${match.location}.`,
+                    message: `Asset ${match.serial} gevonden via ${matchedBy === 'serial' ? 'serienummer' : 'device-nummer'} op ${match.location}.`,
                 }
             });
         };
+
+        window.setWmsScanInput = (value) => {
+            setState({ wmsScanInput: value.toUpperCase(), wmsScanFeedback: null });
+        };
+        function processWmsScan(rawCode, context = state.wmsView) {
+            const assetResult = findMatchingAssets(rawCode, MOCK_ASSETS);
+            const locationResult = findMatchingLocations(rawCode, KNOWN_LOCATIONS);
+            const normalizedCode = assetResult.normalizedCode || locationResult.normalizedCode;
+
+            if (!normalizedCode) {
+                setState({ wmsScanFeedback: { status: 'warning', message: 'Scan bevat geen bruikbare code.' } });
+                return;
+            }
+
+            if (context === 'move') {
+                if (assetResult.matchedItems.length > 0 && assetResult.matchedBy !== 'location') {
+                    const asset = assetResult.matchedItems[0];
+                    setState({
+                        moveSearchInput: asset[assetResult.matchedBy],
+                        moveSelectedAssetSerial: asset.serial,
+                        moveFeedback: { status: 'success', message: `Asset ${asset.serial} geselecteerd via ${assetResult.matchedBy === 'serial' ? 'serienummer' : 'device-nummer'}.` },
+                        wmsScanFeedback: null,
+                    });
+                    return;
+                }
+
+                if (locationResult.matchedItems.length > 0) {
+                    const location = locationResult.matchedItems[0];
+                    setState({
+                        moveDestinationInput: location,
+                        moveFeedback: { status: 'success', message: `Doellocatie ingevuld: ${location}.` },
+                        wmsScanFeedback: null,
+                    });
+                    return;
+                }
+
+                setState({ moveFeedback: { status: 'warning', message: `Code ${normalizedCode} is geen bekende asset of locatie.` } });
+                return;
+            }
+
+            if (context === 'receive') {
+                const asset = assetResult.matchedItems[0];
+                const receipt = MOCK_RECEIPTS.find(r => normalizeScanCode(r.serial) === normalizedCode);
+                if (asset && assetResult.matchedBy !== 'location') {
+                    setState({ wmsScanFeedback: { status: 'success', message: `Ontvangst-scan: machine ${asset.serial} (${asset.deviceNumber}) herkend.` } });
+                    return;
+                }
+                if (receipt) {
+                    setState({ wmsScanFeedback: { status: 'success', message: `Ontvangst ${receipt.id} gevonden voor serial ${receipt.serial}.` } });
+                    return;
+                }
+                if (locationResult.matchedItems.length > 0) {
+                    setState({ wmsScanFeedback: { status: 'success', message: `Dock/locatie herkend: ${locationResult.matchedItems[0]}.` } });
+                    return;
+                }
+                setState({ wmsScanFeedback: { status: 'warning', message: `Geen ontvangstmatch voor code ${normalizedCode}.` } });
+                return;
+            }
+
+            if (context === 'tasks') {
+                const taskBySerial = MOCK_OPEN_MOVES.find(task => normalizeScanCode(task.serial) === normalizedCode);
+                const taskByLocation = MOCK_OPEN_MOVES.find(task => normalizeScanCode(task.to) === normalizedCode || normalizeScanCode(task.from) === normalizedCode);
+                if (taskBySerial) {
+                    setState({ wmsScanFeedback: { status: 'success', message: `Opdracht ${taskBySerial.id} gevonden voor serial ${taskBySerial.serial}.` } });
+                    return;
+                }
+                if (taskByLocation) {
+                    setState({ wmsScanFeedback: { status: 'success', message: `Opdracht ${taskByLocation.id} gevonden voor locatie ${taskByLocation.from} → ${taskByLocation.to}.` } });
+                    return;
+                }
+                setState({ wmsScanFeedback: { status: 'warning', message: `Geen open opdracht voor code ${normalizedCode}.` } });
+            }
+        }
+        window.submitWmsScan = (context = state.wmsView) => {
+            const code = state.wmsScanInput || '';
+            processWmsScan(code, context);
+            setState({ wmsScanInput: '' });
+        };
+
         window.confirmMoveAsset = () => {
-            const destination = (state.moveDestinationInput || '').trim().toUpperCase();
+            const rawDestination = state.moveDestinationInput || '';
+            const { matchedItems: matchedLocations, normalizedCode } = findMatchingLocations(rawDestination, KNOWN_LOCATIONS);
+            const destination = matchedLocations[0] || '';
             const selectedIndex = MOCK_ASSETS.findIndex(asset => asset.serial === state.moveSelectedAssetSerial);
             if (selectedIndex === -1) {
                 setState({ moveFeedback: { status: 'warning', message: 'Selecteer eerst een asset via serienummer of device-nummer.' } });
                 return;
             }
-            if (!destination) {
+            if (!normalizedCode) {
                 setState({ moveFeedback: { status: 'warning', message: 'Doellocatie ontbreekt. Scan of typ een locatie.' } });
+                return;
+            }
+            if (!destination) {
+                setState({ moveFeedback: { status: 'warning', message: `Onbekende locatiecode ${normalizedCode}.` } });
                 return;
             }
 
@@ -1480,6 +1584,8 @@
                 }
             } else if (state.view === 'picking' || state.scannerContext === 'picking') {
                 processPickingScan(result);
+            } else if (state.appMode === 'wms-v1' && ['move', 'receive', 'tasks'].includes(state.wmsView)) {
+                processWmsScan(result, state.wmsView);
             } else {
                 alert(`Gescand: ${result}`);
             }
