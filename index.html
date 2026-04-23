@@ -138,7 +138,7 @@
             return Array.from(locations).sort();
         })();
 
-        const MOCK_ASSETS = [
+        const DEFAULT_MOCK_ASSETS = [
             { serial: 'H2X386Y00010', deviceNumber: 'TRK-204', description: 'Linde H20T heftruck', location: 'C-LINKS', status: 'available', updatedAt: '2026-04-23T07:12:00Z' },
             { serial: 'H2X386Y00011', deviceNumber: 'TRK-209', description: 'Linde E16 elektrotruck', location: 'W16', status: 'moving', updatedAt: '2026-04-23T08:41:00Z' },
             { serial: 'H2X386Y00012', deviceNumber: 'TRK-221', description: 'Orderpicker N20', location: 'EXP-01', status: 'loading', updatedAt: '2026-04-23T08:03:00Z' },
@@ -146,23 +146,72 @@
             { serial: 'H2X386Y00014', deviceNumber: 'TRK-230', description: 'Pallettruck MT15', location: 'W16', status: 'maintenance', updatedAt: '2026-04-22T21:18:00Z' },
         ];
 
-        const MOCK_OPEN_MOVES = [
+        const DEFAULT_MOCK_OPEN_MOVES = [
             { id: 'MOVE-260423-001', serial: 'H2X386Y00010', from: 'C-LINKS', to: 'EXP-01', note: 'Spoed voor outbound lane.', requester: 'PLN', priority: 'high', status: 'open', createdAt: '2026-04-23T07:05:00Z', completedAt: null },
             { id: 'MOVE-260423-002', serial: 'H2X386Y00011', from: 'W16', to: 'INK-01', note: 'Aanvoer naar inkomende controle.', requester: 'RCV', priority: 'normal', status: 'open', createdAt: '2026-04-23T08:20:00Z', completedAt: null },
             { id: 'MOVE-260423-003', serial: 'H2X386Y00013', from: 'INK-01', to: 'C-LINKS', note: 'Retour na kwaliteitscheck.', requester: 'QCL', priority: 'normal', status: 'open', createdAt: '2026-04-23T06:50:00Z', completedAt: null },
         ];
 
-        const MOCK_RECEIPTS = [
+        const DEFAULT_MOCK_RECEIPTS = [
             { id: 'RCV-260423-014', serial: 'H2X386Y00013', deviceNumber: 'TRK-227', pakbonNumber: 'PKB-2026-1145', externalNumber: 'EXT-908771', dock: 'INK-01', supplier: 'Linde Parts Benelux', status: 'inbound', receivedAt: '2026-04-23T06:42:00Z' },
             { id: 'RCV-260423-015', serial: 'H2X386Y00015', deviceNumber: 'TRK-245', pakbonNumber: 'PKB-2026-1146', externalNumber: 'EXT-908772', dock: 'INK-02', supplier: 'Hydro Systems BV', status: 'quality-check', receivedAt: '2026-04-23T07:58:00Z' },
         ];
 
-        const MOCK_HISTORY_LOG = [
+        const DEFAULT_MOCK_HISTORY_LOG = [
             { id: 'LOG-9910', type: 'move', serial: 'H2X386Y00012', deviceNumber: 'TRK-221', from: 'W16', to: 'EXP-01', operator: 'JVD', timestamp: '2026-04-23T05:34:00Z', note: 'Verplaatsing bevestigd' },
             { id: 'LOG-9911', type: 'receipt', serial: 'H2X386Y00010', deviceNumber: 'TRK-204', from: 'C-LINKS', to: 'INK-01', operator: 'MRT', timestamp: '2026-04-23T06:12:00Z', note: 'Asset gekoppeld aan dock' },
             { id: 'LOG-9912', type: 'move', serial: 'H2X386Y00014', deviceNumber: 'TRK-230', from: 'W16', to: 'W16', operator: 'OPS', timestamp: '2026-04-22T21:18:00Z', note: 'Status gewijzigd naar maintenance' },
         ];
 
+
+
+        const LOCAL_STORAGE_KEY = 'wms-v1-mockdata';
+
+        const cloneData = (value) => JSON.parse(JSON.stringify(value));
+        const loadPersistedWmsData = () => {
+            try {
+                const raw = localStorage.getItem(LOCAL_STORAGE_KEY);
+                if (!raw) return null;
+                const parsed = JSON.parse(raw);
+                return {
+                    assets: Array.isArray(parsed.assets) ? parsed.assets : null,
+                    moves: Array.isArray(parsed.moves) ? parsed.moves : null,
+                    receipts: Array.isArray(parsed.receipts) ? parsed.receipts : null,
+                    history: Array.isArray(parsed.history) ? parsed.history : null,
+                };
+            } catch (error) {
+                console.warn('Kon localStorage mockdata niet laden:', error);
+                return null;
+            }
+        };
+
+        const persistWmsData = () => {
+            try {
+                localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify({
+                    assets: MOCK_ASSETS,
+                    moves: MOCK_OPEN_MOVES,
+                    receipts: MOCK_RECEIPTS,
+                    history: MOCK_HISTORY_LOG,
+                }));
+            } catch (error) {
+                console.warn('Kon localStorage mockdata niet opslaan:', error);
+            }
+        };
+
+        const persistedWmsData = loadPersistedWmsData();
+        let MOCK_ASSETS = cloneData(persistedWmsData?.assets ?? DEFAULT_MOCK_ASSETS);
+        let MOCK_OPEN_MOVES = cloneData(persistedWmsData?.moves ?? DEFAULT_MOCK_OPEN_MOVES);
+        let MOCK_RECEIPTS = cloneData(persistedWmsData?.receipts ?? DEFAULT_MOCK_RECEIPTS);
+        let MOCK_HISTORY_LOG = cloneData(persistedWmsData?.history ?? DEFAULT_MOCK_HISTORY_LOG);
+        if (!persistedWmsData) persistWmsData();
+
+        const resetWmsMockData = () => {
+            MOCK_ASSETS = cloneData(DEFAULT_MOCK_ASSETS);
+            MOCK_OPEN_MOVES = cloneData(DEFAULT_MOCK_OPEN_MOVES);
+            MOCK_RECEIPTS = cloneData(DEFAULT_MOCK_RECEIPTS);
+            MOCK_HISTORY_LOG = cloneData(DEFAULT_MOCK_HISTORY_LOG);
+            persistWmsData();
+        };
         let state = {
             appMode: 'orderflow',
             view: 'login',
@@ -526,9 +575,14 @@
                             <h1 class="${t.textMain} text-lg font-bold">${active.title}</h1>
                             <p class="${t.textSec} text-xs mt-0.5">Operator: <span class="font-mono font-semibold ${t.textMain}">${state.user?.initials || 'N/B'}</span></p>
                         </div>
-                        <button onclick="logout()" class="p-2 rounded-full ${state.darkMode ? 'bg-white/5 hover:bg-white/10' : 'bg-white/60 hover:bg-white/80'}">
-                            <i data-lucide="log-out" class="text-red-500" width="20"></i>
-                        </button>
+                        <div class="flex items-center gap-2">
+                            <button onclick="resetDemoData()" class="px-2 py-1 rounded-lg border text-[10px] font-semibold uppercase tracking-wide ${state.darkMode ? 'border-amber-500/40 bg-amber-500/10 text-amber-200 hover:bg-amber-500/20' : 'border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100'}">
+                                Reset demo
+                            </button>
+                            <button onclick="logout()" class="p-2 rounded-full ${state.darkMode ? 'bg-white/5 hover:bg-white/10' : 'bg-white/60 hover:bg-white/80'}">
+                                <i data-lucide="log-out" class="text-red-500" width="20"></i>
+                            </button>
+                        </div>
                     </div>
                     ${GlassCard(`
                         <div class="flex items-start gap-3">
@@ -1208,6 +1262,20 @@
             }
         };
         window.logout = () => setState({ user: null, view: 'login', loginInput: '', wmsView: 'dashboard' });
+        window.resetDemoData = () => {
+            resetWmsMockData();
+            setState({
+                wmsView: 'dashboard',
+                moveSearchInput: '',
+                moveDestinationInput: '',
+                moveSelectedAssetSerial: '',
+                activeMoveTaskId: null,
+                moveFeedback: { status: 'success', message: 'Demo mockdata is gereset naar de beginstand.' },
+                wmsScanFeedback: null,
+                taskForm: { serial: '', from: '', to: '', note: '', requester: '' },
+                receiveForm: { pakbonNumber: '', externalNumber: '', serial: '', deviceNumber: '', location: '' },
+            });
+        };
         window.navigate = (view) => setState({ view });
         window.navigateWms = (view) => {
             const allowed = ['login', 'dashboard', 'move', 'tasks', 'receive', 'history'];
@@ -1430,6 +1498,7 @@
                 timestamp: now,
                 note: isNewAsset ? 'Nieuwe asset ontvangen' : 'Ontvangst verwerkt',
             });
+            persistWmsData();
 
             setState({
                 receiveForm: { pakbonNumber: '', externalNumber: '', serial: '', deviceNumber: '', location: '' },
@@ -1465,6 +1534,7 @@
                 createdAt: new Date().toISOString(),
                 completedAt: null,
             });
+            persistWmsData();
             setState({
                 taskForm: { serial: '', from: '', to: '', note: '', requester: '' },
                 wmsScanFeedback: { status: 'success', message: `Opdracht ${id} aangemaakt.` },
@@ -1538,6 +1608,7 @@
                     };
                 }
             }
+            persistWmsData();
 
             setState({
                 moveDestinationInput: '',
