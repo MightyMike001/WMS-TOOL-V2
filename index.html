@@ -58,6 +58,12 @@
         import { findMatchingAssets, findMatchingItems, findMatchingLocations, normalizeScanCode } from './scanUtils.js';
 
         // --- 1. DATA & STATE ---
+        // Power Apps / Dataverse mapping (platte records, geen nested objecten):
+        // - Assets: serial (business key), deviceNumber, description, location, status, updatedAt
+        // - MoveRequests: id, serial (lookup naar Assets.serial), from, to, note, requestedBy, priority, status, createdAt, completedAt
+        // - MoveTransactions: id, type, serial (lookup naar Assets.serial), deviceNumber, from, to, operator, timestamp, note
+        // - Receipts: id, serial (lookup naar Assets.serial), deviceNumber, deliveryNoteNumber, externalDocumentNumber, dock, supplier, status, receivedAt
+        // Mapping-notitie: serial is in alle tabellen de primaire bedrijfsleutel en blijft overal zichtbaar in UI en logica.
         // Let op: In een echte app zouden MOCK_ORDERS en de bijbehorende orderregels uit een database komen.
         // Voor nu gebruiken we een mapping van mock orderregels en cachen we responses zodat elke order zijn eigen picklijst behoudt.
         let MOCK_ORDERS = [
@@ -138,7 +144,7 @@
             return Array.from(locations).sort();
         })();
 
-        const DEFAULT_MOCK_ASSETS = [
+        const DEFAULT_ASSETS = [
             { serial: 'H2X386Y00010', deviceNumber: 'TRK-204', description: 'Linde H20T heftruck', location: 'C-LINKS', status: 'available', updatedAt: '2026-04-23T07:12:00Z' },
             { serial: 'H2X386Y00011', deviceNumber: 'TRK-209', description: 'Linde E16 elektrotruck', location: 'W16', status: 'moving', updatedAt: '2026-04-23T08:41:00Z' },
             { serial: 'H2X386Y00012', deviceNumber: 'TRK-221', description: 'Orderpicker N20', location: 'EXP-01', status: 'loading', updatedAt: '2026-04-23T08:03:00Z' },
@@ -146,18 +152,18 @@
             { serial: 'H2X386Y00014', deviceNumber: 'TRK-230', description: 'Pallettruck MT15', location: 'W16', status: 'maintenance', updatedAt: '2026-04-22T21:18:00Z' },
         ];
 
-        const DEFAULT_MOCK_OPEN_MOVES = [
-            { id: 'MOVE-260423-001', serial: 'H2X386Y00010', from: 'C-LINKS', to: 'EXP-01', note: 'Spoed voor outbound lane.', requester: 'PLN', priority: 'high', status: 'open', createdAt: '2026-04-23T07:05:00Z', completedAt: null },
-            { id: 'MOVE-260423-002', serial: 'H2X386Y00011', from: 'W16', to: 'INK-01', note: 'Aanvoer naar inkomende controle.', requester: 'RCV', priority: 'normal', status: 'open', createdAt: '2026-04-23T08:20:00Z', completedAt: null },
-            { id: 'MOVE-260423-003', serial: 'H2X386Y00013', from: 'INK-01', to: 'C-LINKS', note: 'Retour na kwaliteitscheck.', requester: 'QCL', priority: 'normal', status: 'open', createdAt: '2026-04-23T06:50:00Z', completedAt: null },
+        const DEFAULT_MOVE_REQUESTS = [
+            { id: 'MOVE-260423-001', serial: 'H2X386Y00010', from: 'C-LINKS', to: 'EXP-01', note: 'Spoed voor outbound lane.', requestedBy: 'PLN', priority: 'high', status: 'open', createdAt: '2026-04-23T07:05:00Z', completedAt: null },
+            { id: 'MOVE-260423-002', serial: 'H2X386Y00011', from: 'W16', to: 'INK-01', note: 'Aanvoer naar inkomende controle.', requestedBy: 'RCV', priority: 'normal', status: 'open', createdAt: '2026-04-23T08:20:00Z', completedAt: null },
+            { id: 'MOVE-260423-003', serial: 'H2X386Y00013', from: 'INK-01', to: 'C-LINKS', note: 'Retour na kwaliteitscheck.', requestedBy: 'QCL', priority: 'normal', status: 'open', createdAt: '2026-04-23T06:50:00Z', completedAt: null },
         ];
 
-        const DEFAULT_MOCK_RECEIPTS = [
-            { id: 'RCV-260423-014', serial: 'H2X386Y00013', deviceNumber: 'TRK-227', pakbonNumber: 'PKB-2026-1145', externalNumber: 'EXT-908771', dock: 'INK-01', supplier: 'Linde Parts Benelux', status: 'inbound', receivedAt: '2026-04-23T06:42:00Z' },
-            { id: 'RCV-260423-015', serial: 'H2X386Y00015', deviceNumber: 'TRK-245', pakbonNumber: 'PKB-2026-1146', externalNumber: 'EXT-908772', dock: 'INK-02', supplier: 'Hydro Systems BV', status: 'quality-check', receivedAt: '2026-04-23T07:58:00Z' },
+        const DEFAULT_RECEIPTS = [
+            { id: 'RCV-260423-014', serial: 'H2X386Y00013', deviceNumber: 'TRK-227', deliveryNoteNumber: 'PKB-2026-1145', externalDocumentNumber: 'EXT-908771', dock: 'INK-01', supplier: 'Linde Parts Benelux', status: 'inbound', receivedAt: '2026-04-23T06:42:00Z' },
+            { id: 'RCV-260423-015', serial: 'H2X386Y00015', deviceNumber: 'TRK-245', deliveryNoteNumber: 'PKB-2026-1146', externalDocumentNumber: 'EXT-908772', dock: 'INK-02', supplier: 'Hydro Systems BV', status: 'quality-check', receivedAt: '2026-04-23T07:58:00Z' },
         ];
 
-        const DEFAULT_MOCK_HISTORY_LOG = [
+        const DEFAULT_MOVE_TRANSACTIONS = [
             { id: 'LOG-9910', type: 'move', serial: 'H2X386Y00012', deviceNumber: 'TRK-221', from: 'W16', to: 'EXP-01', operator: 'JVD', timestamp: '2026-04-23T05:34:00Z', note: 'Verplaatsing bevestigd' },
             { id: 'LOG-9911', type: 'receipt', serial: 'H2X386Y00010', deviceNumber: 'TRK-204', from: 'C-LINKS', to: 'INK-01', operator: 'MRT', timestamp: '2026-04-23T06:12:00Z', note: 'Asset gekoppeld aan dock' },
             { id: 'LOG-9912', type: 'move', serial: 'H2X386Y00014', deviceNumber: 'TRK-230', from: 'W16', to: 'W16', operator: 'OPS', timestamp: '2026-04-22T21:18:00Z', note: 'Status gewijzigd naar maintenance' },
@@ -175,9 +181,9 @@
                 const parsed = JSON.parse(raw);
                 return {
                     assets: Array.isArray(parsed.assets) ? parsed.assets : null,
-                    moves: Array.isArray(parsed.moves) ? parsed.moves : null,
+                    moveRequests: Array.isArray(parsed.moveRequests) ? parsed.moveRequests : (Array.isArray(parsed.moves) ? parsed.moves : null),
                     receipts: Array.isArray(parsed.receipts) ? parsed.receipts : null,
-                    history: Array.isArray(parsed.history) ? parsed.history : null,
+                    moveTransactions: Array.isArray(parsed.moveTransactions) ? parsed.moveTransactions : (Array.isArray(parsed.history) ? parsed.history : null),
                 };
             } catch (error) {
                 console.warn('Kon localStorage mockdata niet laden:', error);
@@ -188,10 +194,10 @@
         const persistWmsData = () => {
             try {
                 localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify({
-                    assets: MOCK_ASSETS,
-                    moves: MOCK_OPEN_MOVES,
-                    receipts: MOCK_RECEIPTS,
-                    history: MOCK_HISTORY_LOG,
+                    assets: ASSETS,
+                    moveRequests: MOVE_REQUESTS,
+                    receipts: RECEIPTS,
+                    moveTransactions: MOVE_TRANSACTIONS,
                 }));
             } catch (error) {
                 console.warn('Kon localStorage mockdata niet opslaan:', error);
@@ -199,17 +205,17 @@
         };
 
         const persistedWmsData = loadPersistedWmsData();
-        let MOCK_ASSETS = cloneData(persistedWmsData?.assets ?? DEFAULT_MOCK_ASSETS);
-        let MOCK_OPEN_MOVES = cloneData(persistedWmsData?.moves ?? DEFAULT_MOCK_OPEN_MOVES);
-        let MOCK_RECEIPTS = cloneData(persistedWmsData?.receipts ?? DEFAULT_MOCK_RECEIPTS);
-        let MOCK_HISTORY_LOG = cloneData(persistedWmsData?.history ?? DEFAULT_MOCK_HISTORY_LOG);
+        let ASSETS = cloneData(persistedWmsData?.assets ?? DEFAULT_ASSETS);
+        let MOVE_REQUESTS = cloneData(persistedWmsData?.moveRequests ?? DEFAULT_MOVE_REQUESTS);
+        let RECEIPTS = cloneData(persistedWmsData?.receipts ?? DEFAULT_RECEIPTS);
+        let MOVE_TRANSACTIONS = cloneData(persistedWmsData?.moveTransactions ?? DEFAULT_MOVE_TRANSACTIONS);
         if (!persistedWmsData) persistWmsData();
 
         const resetWmsMockData = () => {
-            MOCK_ASSETS = cloneData(DEFAULT_MOCK_ASSETS);
-            MOCK_OPEN_MOVES = cloneData(DEFAULT_MOCK_OPEN_MOVES);
-            MOCK_RECEIPTS = cloneData(DEFAULT_MOCK_RECEIPTS);
-            MOCK_HISTORY_LOG = cloneData(DEFAULT_MOCK_HISTORY_LOG);
+            ASSETS = cloneData(DEFAULT_ASSETS);
+            MOVE_REQUESTS = cloneData(DEFAULT_MOVE_REQUESTS);
+            RECEIPTS = cloneData(DEFAULT_RECEIPTS);
+            MOVE_TRANSACTIONS = cloneData(DEFAULT_MOVE_TRANSACTIONS);
             persistWmsData();
         };
         let state = {
@@ -261,11 +267,11 @@
                 from: '',
                 to: '',
                 note: '',
-                requester: '',
+                requestedBy: '',
             },
             receiveForm: {
-                pakbonNumber: '',
-                externalNumber: '',
+                deliveryNoteNumber: '',
+                externalDocumentNumber: '',
                 serial: '',
                 deviceNumber: '',
                 location: '',
@@ -292,9 +298,9 @@
                 : 'bg-white/80 border-slate-200/60 shadow-[0_4px_24px_0_rgba(100,116,139,0.15)]',
             navGlass: state.darkMode ? 'bg-white/5 border-white/10' : 'bg-white/60 border-slate-200/60'
         });
-        const getOpenMoveTasks = () => MOCK_OPEN_MOVES.filter(task => task.status === 'open');
+        const getOpenMoveTasks = () => MOVE_REQUESTS.filter(task => task.status === 'open');
         const getSortedHistoryEntries = () =>
-            [...MOCK_HISTORY_LOG].sort((a, b) => new Date(b.timestamp || b.loggedAt || 0) - new Date(a.timestamp || a.loggedAt || 0));
+            [...MOVE_TRANSACTIONS].sort((a, b) => new Date(b.timestamp || b.loggedAt || 0) - new Date(a.timestamp || a.loggedAt || 0));
 
         function syncBodyTheme(darkMode = state.darkMode) {
             const b = document.body;
@@ -609,7 +615,7 @@
                 return `
                     <p class="${t.textSec} text-xs uppercase tracking-widest mb-2">Assets / Machines</p>
                     <div class="space-y-2 max-h-[44vh] overflow-y-auto no-scrollbar pr-1">
-                        ${MOCK_ASSETS.map(asset => `
+                        ${ASSETS.map(asset => `
                             <div class="p-3 rounded-xl border ${state.darkMode ? 'border-white/10 bg-white/5' : 'border-slate-200 bg-white'}">
                                 <div class="flex items-center justify-between gap-2">
                                     <p class="${t.textMain} text-sm font-semibold">${asset.deviceNumber}</p>
@@ -626,7 +632,7 @@
             }
 
             if (state.wmsView === 'move') {
-                const selectedAsset = MOCK_ASSETS.find(asset => asset.serial === state.moveSelectedAssetSerial);
+                const selectedAsset = ASSETS.find(asset => asset.serial === state.moveSelectedAssetSerial);
                 const canConfirmMove = Boolean(selectedAsset && state.moveDestinationInput.trim());
                 return `
                     <p class="${t.textSec} text-xs uppercase tracking-widest mb-2">Machine verplaatsen</p>
@@ -690,7 +696,7 @@
                             <input type="text" value="${state.taskForm.from}" oninput="updateTaskForm('from', this.value)" placeholder="van-locatie" class="w-full bg-transparent border rounded-xl px-3 py-2 text-sm font-mono outline-none ${state.darkMode ? 'border-white/20 text-white placeholder:text-white/30 focus:border-red-400' : 'border-slate-300 text-slate-900 placeholder:text-slate-400 focus:border-red-500'}" />
                             <input type="text" value="${state.taskForm.to}" oninput="updateTaskForm('to', this.value)" placeholder="naar-locatie" class="w-full bg-transparent border rounded-xl px-3 py-2 text-sm font-mono outline-none ${state.darkMode ? 'border-white/20 text-white placeholder:text-white/30 focus:border-red-400' : 'border-slate-300 text-slate-900 placeholder:text-slate-400 focus:border-red-500'}" />
                             <input type="text" value="${state.taskForm.note}" oninput="updateTaskForm('note', this.value)" placeholder="opmerking" class="w-full bg-transparent border rounded-xl px-3 py-2 text-sm outline-none ${state.darkMode ? 'border-white/20 text-white placeholder:text-white/30 focus:border-red-400' : 'border-slate-300 text-slate-900 placeholder:text-slate-400 focus:border-red-500'}" />
-                            <input type="text" value="${state.taskForm.requester}" oninput="updateTaskForm('requester', this.value)" placeholder="aanvrager" class="w-full bg-transparent border rounded-xl px-3 py-2 text-sm font-mono outline-none ${state.darkMode ? 'border-white/20 text-white placeholder:text-white/30 focus:border-red-400' : 'border-slate-300 text-slate-900 placeholder:text-slate-400 focus:border-red-500'}" />
+                            <input type="text" value="${state.taskForm.requestedBy}" oninput="updateTaskForm('requestedBy', this.value)" placeholder="aanvrager" class="w-full bg-transparent border rounded-xl px-3 py-2 text-sm font-mono outline-none ${state.darkMode ? 'border-white/20 text-white placeholder:text-white/30 focus:border-red-400' : 'border-slate-300 text-slate-900 placeholder:text-slate-400 focus:border-red-500'}" />
                             <button onclick="createMoveTask()" class="px-3 py-2 rounded-xl border text-xs font-semibold ${state.darkMode ? 'border-emerald-500/50 bg-emerald-500/15 text-emerald-200 hover:bg-emerald-500/25' : 'border-emerald-300 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'}">Opslaan opdracht</button>
                         </div>
                     </div>
@@ -703,7 +709,7 @@
                                         <p class="${t.textMain} text-sm font-semibold">${move.id}</p>
                                         <p class="${t.textSec} text-xs font-mono">${move.serial}</p>
                                         <p class="${t.textMain} text-xs mt-1">${move.from} → ${move.to}</p>
-                                        <p class="${t.textSec} text-xs mt-1">Aanvrager: <span class="font-semibold">${move.requester || '-'}</span></p>
+                                        <p class="${t.textSec} text-xs mt-1">Aanvrager: <span class="font-semibold">${move.requestedBy || '-'}</span></p>
                                         <p class="${t.textSec} text-xs">${move.note || 'Geen opmerking'}</p>
                                     </div>
                                     <button onclick="startMoveFromTask('${move.id}')" class="shrink-0 px-2 py-1 rounded-lg border text-[11px] font-semibold ${state.darkMode ? 'border-red-500/40 bg-red-500/15 text-red-200 hover:bg-red-500/25' : 'border-red-300 bg-red-50 text-red-700 hover:bg-red-100'}">
@@ -719,8 +725,8 @@
             if (state.wmsView === 'receive') {
                 const canSubmitReceipt = Boolean(
                     state.receiveForm.serial.trim() &&
-                    state.receiveForm.pakbonNumber.trim() &&
-                    state.receiveForm.externalNumber.trim() &&
+                    state.receiveForm.deliveryNoteNumber.trim() &&
+                    state.receiveForm.externalDocumentNumber.trim() &&
                     state.receiveForm.deviceNumber.trim() &&
                     state.receiveForm.location.trim()
                 );
@@ -737,8 +743,8 @@
                     <div class="p-3 rounded-xl border ${state.darkMode ? 'border-white/10 bg-white/5' : 'border-slate-200 bg-white'} mb-2">
                         <p class="${t.textSec} text-[10px] uppercase tracking-widest mb-2">Ontvangstformulier</p>
                         <div class="grid grid-cols-1 gap-2">
-                            <input type="text" value="${state.receiveForm.pakbonNumber}" oninput="updateReceiveForm('pakbonNumber', this.value)" placeholder="pakbonnummer" class="w-full bg-transparent border rounded-xl px-3 py-2 text-sm font-mono outline-none ${state.darkMode ? 'border-white/20 text-white placeholder:text-white/30 focus:border-red-400' : 'border-slate-300 text-slate-900 placeholder:text-slate-400 focus:border-red-500'}" />
-                            <input type="text" value="${state.receiveForm.externalNumber}" oninput="updateReceiveForm('externalNumber', this.value)" placeholder="extern nummer" class="w-full bg-transparent border rounded-xl px-3 py-2 text-sm font-mono outline-none ${state.darkMode ? 'border-white/20 text-white placeholder:text-white/30 focus:border-red-400' : 'border-slate-300 text-slate-900 placeholder:text-slate-400 focus:border-red-500'}" />
+                            <input type="text" value="${state.receiveForm.deliveryNoteNumber}" oninput="updateReceiveForm('deliveryNoteNumber', this.value)" placeholder="pakbonnummer" class="w-full bg-transparent border rounded-xl px-3 py-2 text-sm font-mono outline-none ${state.darkMode ? 'border-white/20 text-white placeholder:text-white/30 focus:border-red-400' : 'border-slate-300 text-slate-900 placeholder:text-slate-400 focus:border-red-500'}" />
+                            <input type="text" value="${state.receiveForm.externalDocumentNumber}" oninput="updateReceiveForm('externalDocumentNumber', this.value)" placeholder="extern nummer" class="w-full bg-transparent border rounded-xl px-3 py-2 text-sm font-mono outline-none ${state.darkMode ? 'border-white/20 text-white placeholder:text-white/30 focus:border-red-400' : 'border-slate-300 text-slate-900 placeholder:text-slate-400 focus:border-red-500'}" />
                             <input type="text" value="${state.receiveForm.serial}" oninput="updateReceiveForm('serial', this.value)" placeholder="serienummer" class="w-full bg-transparent border rounded-xl px-3 py-2 text-sm font-mono outline-none ${state.darkMode ? 'border-white/20 text-white placeholder:text-white/30 focus:border-red-400' : 'border-slate-300 text-slate-900 placeholder:text-slate-400 focus:border-red-500'}" />
                             <input type="text" value="${state.receiveForm.deviceNumber}" oninput="updateReceiveForm('deviceNumber', this.value)" placeholder="devicenummer" class="w-full bg-transparent border rounded-xl px-3 py-2 text-sm font-mono outline-none ${state.darkMode ? 'border-white/20 text-white placeholder:text-white/30 focus:border-red-400' : 'border-slate-300 text-slate-900 placeholder:text-slate-400 focus:border-red-500'}" />
                             <input type="text" value="${state.receiveForm.location}" oninput="updateReceiveForm('location', this.value)" placeholder="ontvangstlocatie" class="w-full bg-transparent border rounded-xl px-3 py-2 text-sm font-mono outline-none ${state.darkMode ? 'border-white/20 text-white placeholder:text-white/30 focus:border-red-400' : 'border-slate-300 text-slate-900 placeholder:text-slate-400 focus:border-red-500'}" />
@@ -753,11 +759,11 @@
                     </div>
                     ${state.wmsScanFeedback ? `<div class="p-3 rounded-xl border ${state.wmsScanFeedback.status === 'success' ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-300' : 'border-amber-500/40 bg-amber-500/10 text-amber-200'} text-xs mb-2">${state.wmsScanFeedback.message}</div>` : ''}
                     <div class="space-y-2">
-                        ${MOCK_RECEIPTS.map(receipt => `
+                        ${RECEIPTS.map(receipt => `
                             <div class="p-3 rounded-xl border ${state.darkMode ? 'border-white/10 bg-white/5' : 'border-slate-200 bg-white'}">
                                 <p class="${t.textMain} text-sm font-semibold">${receipt.id}</p>
                                 <p class="${t.textSec} text-xs">${receipt.supplier}</p>
-                                <p class="${t.textSec} text-xs">Pakbon ${receipt.pakbonNumber} · Extern ${receipt.externalNumber}</p>
+                                <p class="${t.textSec} text-xs">Pakbon ${receipt.deliveryNoteNumber} · Extern ${receipt.externalDocumentNumber}</p>
                                 <p class="${t.textMain} text-xs mt-1">Dock ${receipt.dock} · ${receipt.status}</p>
                                 <p class="${t.textSec} text-xs font-mono mt-1">${receipt.serial} · ${receipt.deviceNumber}</p>
                             </div>
@@ -1272,8 +1278,8 @@
                 activeMoveTaskId: null,
                 moveFeedback: { status: 'success', message: 'Demo mockdata is gereset naar de beginstand.' },
                 wmsScanFeedback: null,
-                taskForm: { serial: '', from: '', to: '', note: '', requester: '' },
-                receiveForm: { pakbonNumber: '', externalNumber: '', serial: '', deviceNumber: '', location: '' },
+                taskForm: { serial: '', from: '', to: '', note: '', requestedBy: '' },
+                receiveForm: { deliveryNoteNumber: '', externalDocumentNumber: '', serial: '', deviceNumber: '', location: '' },
             });
         };
         window.navigate = (view) => setState({ view });
@@ -1291,7 +1297,7 @@
         };
         window.lookupMoveAsset = () => {
             const query = state.moveSearchInput || '';
-            const { matchedItems, matchedBy, normalizedCode } = findMatchingAssets(query, MOCK_ASSETS);
+            const { matchedItems, matchedBy, normalizedCode } = findMatchingAssets(query, ASSETS);
 
             if (!normalizedCode) {
                 setState({ moveSelectedAssetSerial: '', moveFeedback: { status: 'warning', message: 'Scan of typ eerst een serienummer of device-nummer.' } });
@@ -1318,7 +1324,7 @@
             setState({ wmsScanInput: value.toUpperCase(), wmsScanFeedback: null });
         };
         function processWmsScan(rawCode, context = state.wmsView) {
-            const assetResult = findMatchingAssets(rawCode, MOCK_ASSETS);
+            const assetResult = findMatchingAssets(rawCode, ASSETS);
             const locationResult = findMatchingLocations(rawCode, KNOWN_LOCATIONS);
             const normalizedCode = assetResult.normalizedCode || locationResult.normalizedCode;
 
@@ -1355,7 +1361,7 @@
 
             if (context === 'receive') {
                 const asset = assetResult.matchedItems[0];
-                const receipt = MOCK_RECEIPTS.find(r => normalizeScanCode(r.serial) === normalizedCode);
+                const receipt = RECEIPTS.find(r => normalizeScanCode(r.serial) === normalizedCode);
                 if (asset && assetResult.matchedBy !== 'location') {
                     setState({
                         receiveForm: {
@@ -1371,8 +1377,8 @@
                 if (receipt) {
                     setState({
                         receiveForm: {
-                            pakbonNumber: receipt.pakbonNumber || '',
-                            externalNumber: receipt.externalNumber || '',
+                            deliveryNoteNumber: receipt.deliveryNoteNumber || '',
+                            externalDocumentNumber: receipt.externalDocumentNumber || '',
                             serial: receipt.serial || '',
                             deviceNumber: receipt.deviceNumber || '',
                             location: receipt.dock || '',
@@ -1416,8 +1422,8 @@
             setState({ wmsScanInput: '' });
         };
         window.updateTaskForm = (field, value) => {
-            if (!['serial', 'from', 'to', 'note', 'requester'].includes(field)) return;
-            const shouldUppercase = ['serial', 'from', 'to', 'requester'].includes(field);
+            if (!['serial', 'from', 'to', 'note', 'requestedBy'].includes(field)) return;
+            const shouldUppercase = ['serial', 'from', 'to', 'requestedBy'].includes(field);
             setState({
                 taskForm: {
                     ...state.taskForm,
@@ -1427,7 +1433,7 @@
             });
         };
         window.updateReceiveForm = (field, value) => {
-            if (!['pakbonNumber', 'externalNumber', 'serial', 'deviceNumber', 'location'].includes(field)) return;
+            if (!['deliveryNoteNumber', 'externalDocumentNumber', 'serial', 'deviceNumber', 'location'].includes(field)) return;
             setState({
                 receiveForm: {
                     ...state.receiveForm,
@@ -1437,26 +1443,26 @@
             });
         };
         window.submitReceiveForm = () => {
-            const pakbonNumber = (state.receiveForm.pakbonNumber || '').trim().toUpperCase();
-            const externalNumber = (state.receiveForm.externalNumber || '').trim().toUpperCase();
+            const deliveryNoteNumber = (state.receiveForm.deliveryNoteNumber || '').trim().toUpperCase();
+            const externalDocumentNumber = (state.receiveForm.externalDocumentNumber || '').trim().toUpperCase();
             const serial = (state.receiveForm.serial || '').trim().toUpperCase();
             const deviceNumber = (state.receiveForm.deviceNumber || '').trim().toUpperCase();
             const location = (state.receiveForm.location || '').trim().toUpperCase();
 
-            if (!serial || !pakbonNumber || !externalNumber || !deviceNumber || !location) {
+            if (!serial || !deliveryNoteNumber || !externalDocumentNumber || !deviceNumber || !location) {
                 setState({ wmsScanFeedback: { status: 'warning', message: 'Vul pakbonnummer, extern nummer, serienummer, devicenummer en ontvangstlocatie in.' } });
                 return;
             }
 
             const now = new Date().toISOString();
             const actor = state.user?.initials || 'SYS';
-            const existingAssetIndex = MOCK_ASSETS.findIndex(asset => normalizeScanCode(asset.serial) === normalizeScanCode(serial));
-            const existingAsset = existingAssetIndex !== -1 ? MOCK_ASSETS[existingAssetIndex] : null;
+            const existingAssetIndex = ASSETS.findIndex(asset => normalizeScanCode(asset.serial) === normalizeScanCode(serial));
+            const existingAsset = existingAssetIndex !== -1 ? ASSETS[existingAssetIndex] : null;
             const previousLocation = existingAsset?.location || '-';
             const isNewAsset = !existingAsset;
 
             if (existingAsset) {
-                MOCK_ASSETS[existingAssetIndex] = {
+                ASSETS[existingAssetIndex] = {
                     ...existingAsset,
                     deviceNumber,
                     location,
@@ -1464,7 +1470,7 @@
                     updatedAt: now,
                 };
             } else {
-                MOCK_ASSETS.unshift({
+                ASSETS.unshift({
                     serial,
                     deviceNumber,
                     description: 'Nieuwe asset via goederenontvangst',
@@ -1474,20 +1480,20 @@
                 });
             }
 
-            const receiptId = `RCV-${now.slice(2, 10).replace(/-/g, '')}-${String(MOCK_RECEIPTS.length + 1).padStart(3, '0')}`;
-            MOCK_RECEIPTS.unshift({
+            const receiptId = `RCV-${now.slice(2, 10).replace(/-/g, '')}-${String(RECEIPTS.length + 1).padStart(3, '0')}`;
+            RECEIPTS.unshift({
                 id: receiptId,
                 serial,
                 deviceNumber,
-                pakbonNumber,
-                externalNumber,
+                deliveryNoteNumber,
+                externalDocumentNumber,
                 dock: location,
                 supplier: 'Onbekend / handmatig',
                 status: 'received',
                 receivedAt: now,
             });
 
-            MOCK_HISTORY_LOG.unshift({
+            MOVE_TRANSACTIONS.unshift({
                 id: `LOG-${Date.now()}`,
                 type: 'receipt',
                 serial,
@@ -1501,7 +1507,7 @@
             persistWmsData();
 
             setState({
-                receiveForm: { pakbonNumber: '', externalNumber: '', serial: '', deviceNumber: '', location: '' },
+                receiveForm: { deliveryNoteNumber: '', externalDocumentNumber: '', serial: '', deviceNumber: '', location: '' },
                 moveSelectedAssetSerial: serial,
                 wmsScanFeedback: {
                     status: 'success',
@@ -1516,19 +1522,19 @@
             const from = (state.taskForm.from || '').trim().toUpperCase();
             const to = (state.taskForm.to || '').trim().toUpperCase();
             const note = (state.taskForm.note || '').trim();
-            const requester = (state.taskForm.requester || '').trim().toUpperCase();
-            if (!serial || !from || !to || !requester) {
+            const requestedBy = (state.taskForm.requestedBy || '').trim().toUpperCase();
+            if (!serial || !from || !to || !requestedBy) {
                 setState({ wmsScanFeedback: { status: 'warning', message: 'Vul serienummer, van-locatie, naar-locatie en aanvrager in.' } });
                 return;
             }
-            const id = `MOVE-${new Date().toISOString().slice(2, 10).replace(/-/g, '')}-${String(MOCK_OPEN_MOVES.length + 1).padStart(3, '0')}`;
-            MOCK_OPEN_MOVES.unshift({
+            const id = `MOVE-${new Date().toISOString().slice(2, 10).replace(/-/g, '')}-${String(MOVE_REQUESTS.length + 1).padStart(3, '0')}`;
+            MOVE_REQUESTS.unshift({
                 id,
                 serial,
                 from,
                 to,
                 note,
-                requester,
+                requestedBy,
                 priority: 'normal',
                 status: 'open',
                 createdAt: new Date().toISOString(),
@@ -1536,12 +1542,12 @@
             });
             persistWmsData();
             setState({
-                taskForm: { serial: '', from: '', to: '', note: '', requester: '' },
+                taskForm: { serial: '', from: '', to: '', note: '', requestedBy: '' },
                 wmsScanFeedback: { status: 'success', message: `Opdracht ${id} aangemaakt.` },
             });
         };
         window.startMoveFromTask = (taskId) => {
-            const task = MOCK_OPEN_MOVES.find(item => item.id === taskId && item.status === 'open');
+            const task = MOVE_REQUESTS.find(item => item.id === taskId && item.status === 'open');
             if (!task) {
                 setState({ wmsScanFeedback: { status: 'warning', message: `Opdracht ${taskId} is niet meer open.` } });
                 return;
@@ -1561,7 +1567,7 @@
             const rawDestination = state.moveDestinationInput || '';
             const { matchedItems: matchedLocations, normalizedCode } = findMatchingLocations(rawDestination, KNOWN_LOCATIONS);
             const destination = matchedLocations[0] || '';
-            const selectedIndex = MOCK_ASSETS.findIndex(asset => asset.serial === state.moveSelectedAssetSerial);
+            const selectedIndex = ASSETS.findIndex(asset => asset.serial === state.moveSelectedAssetSerial);
             if (selectedIndex === -1) {
                 setState({ moveFeedback: { status: 'warning', message: 'Selecteer eerst een asset via serienummer of device-nummer.' } });
                 return;
@@ -1575,10 +1581,10 @@
                 return;
             }
 
-            const selectedAsset = MOCK_ASSETS[selectedIndex];
+            const selectedAsset = ASSETS[selectedIndex];
             const fromLocation = selectedAsset.location;
             const now = new Date().toISOString();
-            MOCK_ASSETS[selectedIndex] = {
+            ASSETS[selectedIndex] = {
                 ...selectedAsset,
                 location: destination,
                 updatedAt: now,
@@ -1596,13 +1602,13 @@
                 timestamp: now,
                 note: state.activeMoveTaskId ? `Verplaatsing vanuit opdracht ${state.activeMoveTaskId}` : 'Verplaatsing bevestigd',
             };
-            MOCK_HISTORY_LOG.unshift(historyEntry);
+            MOVE_TRANSACTIONS.unshift(historyEntry);
 
             if (state.activeMoveTaskId) {
-                const taskIndex = MOCK_OPEN_MOVES.findIndex(task => task.id === state.activeMoveTaskId && task.status === 'open');
+                const taskIndex = MOVE_REQUESTS.findIndex(task => task.id === state.activeMoveTaskId && task.status === 'open');
                 if (taskIndex !== -1) {
-                    MOCK_OPEN_MOVES[taskIndex] = {
-                        ...MOCK_OPEN_MOVES[taskIndex],
+                    MOVE_REQUESTS[taskIndex] = {
+                        ...MOVE_REQUESTS[taskIndex],
                         status: 'completed',
                         completedAt: now,
                     };
