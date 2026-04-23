@@ -180,6 +180,7 @@
             scannerContext: null,
             manualScanInput: '',
             scanFeedback: null,
+            scannerOverlayFeedback: null,
             loginInput: '',
             showScanner: false,
             html5QrCode: null,
@@ -582,6 +583,7 @@
                                 <input type="text" value="${state.moveSearchInput}" oninput="setMoveSearchInput(this.value)" placeholder="Scan of typ bijv. H2X386Y00010"
                                     class="w-full bg-transparent border rounded-xl px-3 py-2 text-sm font-mono outline-none ${state.darkMode ? 'border-white/20 text-white placeholder:text-white/30 focus:border-red-400' : 'border-slate-300 text-slate-900 placeholder:text-slate-400 focus:border-red-500'}"
                                 />
+                                <button onclick="openScanner('move-serial')" class="px-3 rounded-xl border text-xs font-semibold ${state.darkMode ? 'border-white/20 bg-white/10 hover:bg-white/15' : 'border-slate-300 bg-slate-100 hover:bg-slate-200'}"><i data-lucide="camera" width="14"></i></button>
                                 <button onclick="lookupMoveAsset()" class="px-3 rounded-xl border text-xs font-semibold ${state.darkMode ? 'border-white/20 bg-white/10 hover:bg-white/15' : 'border-slate-300 bg-slate-100 hover:bg-slate-200'}">Zoek</button>
                             </div>
                             <p class="${t.textSec} text-[11px] mt-2">Serienummer is leidend; device-nummer is fallback.</p>
@@ -602,6 +604,7 @@
                             <input type="text" value="${state.moveDestinationInput}" oninput="setMoveDestinationInput(this.value)" placeholder="Scan of typ locatie (bijv. W16)"
                                 class="w-full bg-transparent border rounded-xl px-3 py-2 text-sm font-mono outline-none ${state.darkMode ? 'border-white/20 text-white placeholder:text-white/30 focus:border-red-400' : 'border-slate-300 text-slate-900 placeholder:text-slate-400 focus:border-red-500'}"
                             />
+                            <button onclick="openScanner('move-location')" class="mt-2 w-full px-3 py-2 rounded-xl border text-xs font-semibold ${state.darkMode ? 'border-white/20 bg-white/10 hover:bg-white/15' : 'border-slate-300 bg-slate-100 hover:bg-slate-200'}">Scan locatie</button>
                         </div>
 
                         ${Button('Bevestig verplaatsing', 'confirmMoveAsset()', 'success', 'check-circle', !canConfirmMove)}
@@ -673,6 +676,7 @@
                         <p class="${t.textSec} text-[10px] uppercase tracking-widest mb-1">Scan serial / device / locatie</p>
                         <div class="flex gap-2">
                             <input type="text" value="${state.wmsScanInput}" oninput="setWmsScanInput(this.value)" placeholder="Scan of typ code" class="w-full bg-transparent border rounded-xl px-3 py-2 text-sm font-mono outline-none ${state.darkMode ? 'border-white/20 text-white placeholder:text-white/30 focus:border-red-400' : 'border-slate-300 text-slate-900 placeholder:text-slate-400 focus:border-red-500'}" />
+                            <button onclick="openScanner('receive-serial')" class="px-3 rounded-xl border text-xs font-semibold ${state.darkMode ? 'border-white/20 bg-white/10 hover:bg-white/15' : 'border-slate-300 bg-slate-100 hover:bg-slate-200'}"><i data-lucide="camera" width="14"></i></button>
                             <button onclick="submitWmsScan('receive')" class="px-3 rounded-xl border text-xs font-semibold ${state.darkMode ? 'border-white/20 bg-white/10 hover:bg-white/15' : 'border-slate-300 bg-slate-100 hover:bg-slate-200'}">Verwerk</button>
                         </div>
                     </div>
@@ -684,6 +688,11 @@
                             <input type="text" value="${state.receiveForm.serial}" oninput="updateReceiveForm('serial', this.value)" placeholder="serienummer" class="w-full bg-transparent border rounded-xl px-3 py-2 text-sm font-mono outline-none ${state.darkMode ? 'border-white/20 text-white placeholder:text-white/30 focus:border-red-400' : 'border-slate-300 text-slate-900 placeholder:text-slate-400 focus:border-red-500'}" />
                             <input type="text" value="${state.receiveForm.deviceNumber}" oninput="updateReceiveForm('deviceNumber', this.value)" placeholder="devicenummer" class="w-full bg-transparent border rounded-xl px-3 py-2 text-sm font-mono outline-none ${state.darkMode ? 'border-white/20 text-white placeholder:text-white/30 focus:border-red-400' : 'border-slate-300 text-slate-900 placeholder:text-slate-400 focus:border-red-500'}" />
                             <input type="text" value="${state.receiveForm.location}" oninput="updateReceiveForm('location', this.value)" placeholder="ontvangstlocatie" class="w-full bg-transparent border rounded-xl px-3 py-2 text-sm font-mono outline-none ${state.darkMode ? 'border-white/20 text-white placeholder:text-white/30 focus:border-red-400' : 'border-slate-300 text-slate-900 placeholder:text-slate-400 focus:border-red-500'}" />
+                            <div class="grid grid-cols-3 gap-2">
+                                <button onclick="openScanner('receive-serial')" class="px-2 py-2 rounded-xl border text-xs font-semibold ${state.darkMode ? 'border-white/20 bg-white/10 hover:bg-white/15' : 'border-slate-300 bg-slate-100 hover:bg-slate-200'}">Scan serial</button>
+                                <button onclick="openScanner('receive-device')" class="px-2 py-2 rounded-xl border text-xs font-semibold ${state.darkMode ? 'border-white/20 bg-white/10 hover:bg-white/15' : 'border-slate-300 bg-slate-100 hover:bg-slate-200'}">Scan device</button>
+                                <button onclick="openScanner('receive-location')" class="px-2 py-2 rounded-xl border text-xs font-semibold ${state.darkMode ? 'border-white/20 bg-white/10 hover:bg-white/15' : 'border-slate-300 bg-slate-100 hover:bg-slate-200'}">Scan locatie</button>
+                            </div>
                             ${Button('Registreer ontvangst', 'submitReceiveForm()', 'success', 'check-circle', !canSubmitReceipt)}
                         </div>
                         <p class="${t.textSec} text-[11px] mt-2">Verwerking is serial-first: serienummer bepaalt update of nieuwe asset.</p>
@@ -1026,7 +1035,7 @@
                                 ${GlassCard(`
                                     <h3 class="${state.darkMode ? 'text-white/60' : 'text-slate-600'} text-xs uppercase mb-0.5 font-medium tracking-wider">Stap 1</h3>
                                     <div class="text-lg font-bold ${t.textMain} mb-2">Scan Heftruck ID</div>
-                                    ${scannedData.truck ? `<div class="bg-emerald-500/10 border border-emerald-500/20 rounded-xl p-2 flex items-center gap-2"><i data-lucide="truck" class="text-emerald-500" width="16"></i><span class="text-emerald-500 font-mono text-base">${scannedData.truck}</span></div>` : Button('Start Camera', 'openScanner()', 'primary', 'camera')}
+                                    ${scannedData.truck ? `<div class="bg-emerald-500/10 border border-emerald-500/20 rounded-xl p-2 flex items-center gap-2"><i data-lucide="truck" class="text-emerald-500" width="16"></i><span class="text-emerald-500 font-mono text-base">${scannedData.truck}</span></div>` : Button('Start Camera', "openScanner('asset-truck')", 'primary', 'camera')}
                                 `, null, 'flex-1')}
                             </div>
                         </div>
@@ -1039,7 +1048,7 @@
                                 ${GlassCard(`
                                     <h3 class="${state.darkMode ? 'text-white/60' : 'text-slate-600'} text-xs uppercase mb-0.5 font-medium tracking-wider">Stap 2</h3>
                                     <div class="text-lg font-bold ${t.textMain} mb-2">Scan Locatie</div>
-                                    ${scannedData.location ? `<div class="bg-emerald-500/10 border border-emerald-500/20 rounded-xl p-2 flex items-center gap-2"><i data-lucide="map-pin" class="text-emerald-500" width="16"></i><span class="text-emerald-500 font-mono text-base">${scannedData.location}</span></div>` : Button('Start Camera', scanStep >= 1 ? 'openScanner()' : '', scanStep >= 1 ? 'primary' : 'secondary', 'camera', scanStep === 0)}
+                                    ${scannedData.location ? `<div class="bg-emerald-500/10 border border-emerald-500/20 rounded-xl p-2 flex items-center gap-2"><i data-lucide="map-pin" class="text-emerald-500" width="16"></i><span class="text-emerald-500 font-mono text-base">${scannedData.location}</span></div>` : Button('Start Camera', scanStep >= 1 ? "openScanner('asset-location')" : '', scanStep >= 1 ? 'primary' : 'secondary', 'camera', scanStep === 0)}
                                 `, null, 'flex-1')}
                             </div>
                         </div>
@@ -1105,20 +1114,39 @@
 
         function renderScanner() {
             if (!state.showScanner) return '';
+            const contextLabelMap = {
+                picking: 'Pick-scan',
+                'asset-truck': 'Serial scan',
+                'asset-location': 'Location scan',
+                'move-serial': 'Serial scan',
+                'move-location': 'Location scan',
+                'receive-serial': 'Serial scan',
+                'receive-device': 'Device scan',
+                'receive-location': 'Location scan',
+            };
+            const contextLabel = contextLabelMap[state.scannerContext] || 'Scan';
             return `
-                <div class="fixed inset-0 z-50 bg-black flex flex-col items-center justify-center p-0 animate-[fadeIn_0.2s_ease-out]">
-                    <div class="relative w-full h-full flex flex-col">
-                        <div id="reader" class="w-full h-full bg-black object-cover"></div>
-                        <div class="absolute inset-0 pointer-events-none flex flex-col items-center justify-center">
-                             <div class="w-64 h-64 border-2 border-white/40 rounded-3xl relative">
-                                <div class="absolute inset-0 border-[40px] border-black/40 rounded-3xl"></div>
+                <div class="fixed inset-0 z-50 bg-black/95 flex flex-col items-center justify-center p-3 sm:p-4 animate-[fadeIn_0.2s_ease-out]">
+                    <div class="relative w-full h-full max-w-lg flex flex-col gap-3">
+                        <div class="rounded-2xl overflow-hidden border border-white/20 bg-black h-[48vh] sm:h-[56vh]">
+                            <div id="reader" class="w-full h-full bg-black object-cover"></div>
+                        </div>
+                        <div class="absolute inset-x-0 top-[9vh] pointer-events-none flex flex-col items-center justify-center">
+                             <div class="w-48 h-48 sm:w-56 sm:h-56 border-2 border-white/40 rounded-2xl relative">
+                                <div class="absolute inset-0 border-[26px] border-black/35 rounded-2xl"></div>
                                 <div class="absolute top-1/2 left-4 right-4 h-0.5 bg-red-500 shadow-[0_0_20px_rgba(239,68,68,0.8)] animate-[ping_1.5s_cubic-bezier(0,0,0.2,1)_infinite]"></div>
                              </div>
-                             <div class="mt-8 bg-black/60 px-4 py-2 rounded-full backdrop-blur-md text-white font-mono text-sm">Richt op barcode</div>
+                             <div class="mt-4 bg-black/65 px-3 py-1.5 rounded-full backdrop-blur-md text-white font-mono text-xs">${contextLabel} · Richt op barcode</div>
                         </div>
-                        <div class="absolute bottom-10 left-0 right-0 flex justify-center pointer-events-auto">
-                            <button onclick="closeScanner()" class="bg-white/20 backdrop-blur-md border border-white/20 text-white px-8 py-4 rounded-full font-bold shadow-lg active:scale-95 transition-transform">
-                                Annuleren
+                        <div class="rounded-2xl border border-white/15 bg-black/60 backdrop-blur-md p-3 space-y-2 pointer-events-auto">
+                            <p class="text-[11px] text-white/70 uppercase tracking-wider">${contextLabel} fallback</p>
+                            <div class="flex gap-2">
+                                <input type="text" value="${state.manualScanInput}" oninput="setManualScanInput(this.value)" onkeydown="if(event.key==='Enter'){submitScannerManualScan();}" placeholder="Typ gescande code" class="flex-1 bg-transparent border border-white/25 text-white placeholder:text-white/40 rounded-xl px-3 py-2 text-sm font-mono outline-none focus:border-red-500" />
+                                <button onclick="submitScannerManualScan()" class="px-3 py-2 rounded-xl text-xs font-semibold bg-red-600 text-white hover:bg-red-500 transition-colors">Gebruik code</button>
+                            </div>
+                            ${state.scannerOverlayFeedback ? `<div class="text-xs px-3 py-2 rounded-lg border ${state.scannerOverlayFeedback.status === 'success' ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-200' : 'bg-amber-500/10 border-amber-500/30 text-amber-200'}">${state.scannerOverlayFeedback.message}</div>` : ''}
+                            <button onclick="closeScanner()" class="w-full bg-white/15 backdrop-blur-md border border-white/20 text-white px-4 py-2 rounded-xl text-sm font-semibold shadow-lg active:scale-95 transition-transform">
+                                Sluiten
                             </button>
                         </div>
                     </div>
@@ -1784,16 +1812,21 @@
         // --- REAL CAMERA LOGIC ---
         
         window.openScanner = (context = null) => {
-            setState({ showScanner: true, scannerContext: context });
+            setState({ showScanner: true, scannerContext: context, scannerOverlayFeedback: null, manualScanInput: '' });
             setTimeout(() => {
                 const html5QrCode = new Html5Qrcode("reader");
                 state.html5QrCode = html5QrCode;
-                const config = { fps: 10, qrbox: { width: 250, height: 250 } };
+                const config = { fps: 10, qrbox: { width: 220, height: 220 } };
                 html5QrCode.start({ facingMode: "environment" }, config, onScanSuccess, onScanFailure)
                 .catch(err => {
                     console.error("Camera start failed", err);
-                    alert("Kan camera niet starten. Zorg dat je HTTPS gebruikt.");
-                    closeScanner();
+                    setState({
+                        html5QrCode: null,
+                        scannerOverlayFeedback: {
+                            status: 'warning',
+                            message: 'Camera start niet (pc of permissie). Gebruik handmatige invoer: "typ gescande code".'
+                        }
+                    });
                 });
             }, 100);
         };
@@ -1802,14 +1835,23 @@
             if (state.html5QrCode) {
                 state.html5QrCode.stop().then(() => {
                     state.html5QrCode.clear();
-                    setState({ showScanner: false, html5QrCode: null, scannerContext: null });
+                    setState({ showScanner: false, html5QrCode: null, scannerContext: null, scannerOverlayFeedback: null, manualScanInput: '' });
                 }).catch(err => {
                     console.log("Stop failed", err);
-                    setState({ showScanner: false, html5QrCode: null, scannerContext: null });
+                    setState({ showScanner: false, html5QrCode: null, scannerContext: null, scannerOverlayFeedback: null, manualScanInput: '' });
                 });
             } else {
-                setState({ showScanner: false, scannerContext: null });
+                setState({ showScanner: false, scannerContext: null, scannerOverlayFeedback: null, manualScanInput: '' });
             }
+        };
+
+        window.submitScannerManualScan = () => {
+            const value = (state.manualScanInput || '').trim();
+            if (!value) {
+                setState({ scannerOverlayFeedback: { status: 'warning', message: 'Voer eerst een code in.' } });
+                return;
+            }
+            handleRealScan(value, state.scannerContext);
         };
 
         function onScanSuccess(decodedText, decodedResult) {
@@ -1823,16 +1865,46 @@
         
         function onScanFailure(error) {}
 
-        function handleRealScan(result) {
-            setState({ showScanner: false, html5QrCode: null, scannerContext: null });
+        function handleRealScan(result, context = state.scannerContext) {
+            setState({ showScanner: false, html5QrCode: null, scannerContext: null, scannerOverlayFeedback: null, manualScanInput: '' });
 
-            if(state.view === 'asset-scan' && state.scannerContext !== 'picking') {
-                if(state.scanStep===0) {
-                    setState({ scannedData:{...state.scannedData, truck: result}, scanStep:1 });
-                } else if(state.scanStep===1) {
-                    setState({ scannedData:{...state.scannedData, location: result}, scanStep:2 });
-                }
-            } else if (state.view === 'picking' || state.scannerContext === 'picking') {
+            if (context === 'asset-truck' || (state.view === 'asset-scan' && state.scanStep === 0 && context !== 'picking')) {
+                setState({ scannedData: { ...state.scannedData, truck: result }, scanStep: 1 });
+                return;
+            }
+
+            if (context === 'asset-location' || (state.view === 'asset-scan' && state.scanStep === 1 && context !== 'picking')) {
+                setState({ scannedData: { ...state.scannedData, location: result }, scanStep: 2 });
+                return;
+            }
+
+            if (context === 'move-serial') {
+                setState({ moveSearchInput: result.toUpperCase() });
+                setTimeout(() => window.lookupMoveAsset(), 0);
+                return;
+            }
+
+            if (context === 'move-location') {
+                setState({ moveDestinationInput: result.toUpperCase(), moveFeedback: null });
+                return;
+            }
+
+            if (context === 'receive-serial') {
+                window.updateReceiveForm('serial', result);
+                return;
+            }
+
+            if (context === 'receive-device') {
+                window.updateReceiveForm('deviceNumber', result);
+                return;
+            }
+
+            if (context === 'receive-location') {
+                window.updateReceiveForm('location', result);
+                return;
+            }
+
+            if (state.view === 'picking' || context === 'picking') {
                 processPickingScan(result);
             } else if (state.appMode === 'wms-v1' && ['move', 'receive', 'tasks'].includes(state.wmsView)) {
                 processWmsScan(result, state.wmsView);
