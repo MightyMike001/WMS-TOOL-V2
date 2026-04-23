@@ -200,6 +200,10 @@
             orderLineMap: {},
             orderLineState: {},
             wmsView: 'dashboard',
+            moveSearchInput: '',
+            moveDestinationInput: '',
+            moveSelectedAssetSerial: '',
+            moveFeedback: null,
         };
 
         // --- 2. STATE MANAGEMENT ---
@@ -546,7 +550,51 @@
                 `;
             }
 
-            if (state.wmsView === 'move' || state.wmsView === 'tasks') {
+            if (state.wmsView === 'move') {
+                const selectedAsset = MOCK_ASSETS.find(asset => asset.serial === state.moveSelectedAssetSerial);
+                const canConfirmMove = Boolean(selectedAsset && state.moveDestinationInput.trim());
+                return `
+                    <p class="${t.textSec} text-xs uppercase tracking-widest mb-2">Machine verplaatsen</p>
+                    <div class="space-y-3">
+                        <div class="p-3 rounded-xl border ${state.darkMode ? 'border-white/10 bg-white/5' : 'border-slate-200 bg-white'}">
+                            <p class="${t.textSec} text-[10px] uppercase tracking-widest mb-1">Stap 1 · Serienummer / device</p>
+                            <div class="flex gap-2">
+                                <input type="text" value="${state.moveSearchInput}" oninput="setMoveSearchInput(this.value)" placeholder="Scan of typ bijv. H2X386Y00010"
+                                    class="w-full bg-transparent border rounded-xl px-3 py-2 text-sm font-mono outline-none ${state.darkMode ? 'border-white/20 text-white placeholder:text-white/30 focus:border-red-400' : 'border-slate-300 text-slate-900 placeholder:text-slate-400 focus:border-red-500'}"
+                                />
+                                <button onclick="lookupMoveAsset()" class="px-3 rounded-xl border text-xs font-semibold ${state.darkMode ? 'border-white/20 bg-white/10 hover:bg-white/15' : 'border-slate-300 bg-slate-100 hover:bg-slate-200'}">Zoek</button>
+                            </div>
+                            <p class="${t.textSec} text-[11px] mt-2">Serienummer is leidend; device-nummer is fallback.</p>
+                        </div>
+
+                        <div class="p-3 rounded-xl border ${selectedAsset ? 'border-emerald-500/40 bg-emerald-500/10' : `${state.darkMode ? 'border-white/10 bg-white/5' : 'border-slate-200 bg-white'}`}">
+                            <p class="${t.textSec} text-[10px] uppercase tracking-widest mb-1">Stap 2 · Huidige locatie</p>
+                            ${selectedAsset ? `
+                                <p class="${t.textMain} text-sm font-semibold">${selectedAsset.deviceNumber} · ${selectedAsset.description}</p>
+                                <p class="${t.textSec} text-xs font-mono">${selectedAsset.serial}</p>
+                                <p class="${t.textMain} text-sm mt-2">Huidige locatie: <span class="font-mono text-red-400">${selectedAsset.location}</span></p>
+                            ` : `<p class="${t.textSec} text-sm">Nog geen asset geselecteerd.</p>`}
+                        </div>
+
+                        <div class="p-3 rounded-xl border ${state.darkMode ? 'border-white/10 bg-white/5' : 'border-slate-200 bg-white'}">
+                            <p class="${t.textSec} text-[10px] uppercase tracking-widest mb-1">Stap 3 · Doellocatie</p>
+                            <input type="text" value="${state.moveDestinationInput}" oninput="setMoveDestinationInput(this.value)" placeholder="Scan of typ locatie (bijv. W16)"
+                                class="w-full bg-transparent border rounded-xl px-3 py-2 text-sm font-mono outline-none ${state.darkMode ? 'border-white/20 text-white placeholder:text-white/30 focus:border-red-400' : 'border-slate-300 text-slate-900 placeholder:text-slate-400 focus:border-red-500'}"
+                            />
+                        </div>
+
+                        ${Button('Bevestig verplaatsing', 'confirmMoveAsset()', 'success', 'check-circle', !canConfirmMove)}
+
+                        ${state.moveFeedback ? `
+                            <div class="p-3 rounded-xl border ${state.moveFeedback.status === 'success' ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-300' : 'border-amber-500/40 bg-amber-500/10 text-amber-200'} text-xs">
+                                ${state.moveFeedback.message}
+                            </div>
+                        ` : ''}
+                    </div>
+                `;
+            }
+
+            if (state.wmsView === 'tasks') {
                 return `
                     <p class="${t.textSec} text-xs uppercase tracking-widest mb-2">Open verplaatsopdrachten</p>
                     <div class="space-y-2">
@@ -1046,6 +1094,79 @@
             if (allowed.includes(view)) {
                 setState({ wmsView: view });
             }
+        };
+        window.setMoveSearchInput = (value) => {
+            setState({ moveSearchInput: value.toUpperCase(), moveFeedback: null });
+        };
+        window.setMoveDestinationInput = (value) => {
+            setState({ moveDestinationInput: value.toUpperCase(), moveFeedback: null });
+        };
+        window.lookupMoveAsset = () => {
+            const query = (state.moveSearchInput || '').trim().toUpperCase();
+            if (!query) {
+                setState({ moveSelectedAssetSerial: '', moveFeedback: { status: 'warning', message: 'Scan of typ eerst een serienummer of device-nummer.' } });
+                return;
+            }
+
+            const serialMatch = MOCK_ASSETS.find(asset => asset.serial.toUpperCase() === query);
+            const deviceMatch = MOCK_ASSETS.find(asset => asset.deviceNumber.toUpperCase() === query);
+            const match = serialMatch || deviceMatch;
+
+            if (!match) {
+                setState({ moveSelectedAssetSerial: '', moveFeedback: { status: 'warning', message: `Geen asset gevonden voor code ${query}.` } });
+                return;
+            }
+
+            setState({
+                moveSelectedAssetSerial: match.serial,
+                moveFeedback: {
+                    status: 'success',
+                    message: `Asset ${match.serial} gevonden op ${match.location}.`,
+                }
+            });
+        };
+        window.confirmMoveAsset = () => {
+            const destination = (state.moveDestinationInput || '').trim().toUpperCase();
+            const selectedIndex = MOCK_ASSETS.findIndex(asset => asset.serial === state.moveSelectedAssetSerial);
+            if (selectedIndex === -1) {
+                setState({ moveFeedback: { status: 'warning', message: 'Selecteer eerst een asset via serienummer of device-nummer.' } });
+                return;
+            }
+            if (!destination) {
+                setState({ moveFeedback: { status: 'warning', message: 'Doellocatie ontbreekt. Scan of typ een locatie.' } });
+                return;
+            }
+
+            const selectedAsset = MOCK_ASSETS[selectedIndex];
+            const fromLocation = selectedAsset.location;
+            const now = new Date().toISOString();
+            MOCK_ASSETS[selectedIndex] = {
+                ...selectedAsset,
+                location: destination,
+                updatedAt: now,
+                status: 'available',
+            };
+
+            const historyEntry = {
+                id: `LOG-${Date.now()}`,
+                serial: selectedAsset.serial,
+                event: 'Verplaatsing bevestigd',
+                from: fromLocation,
+                to: destination,
+                actor: state.user?.initials || 'SYS',
+                loggedAt: now,
+            };
+            MOCK_HISTORY_LOG.unshift(historyEntry);
+
+            setState({
+                moveDestinationInput: '',
+                moveSearchInput: '',
+                moveSelectedAssetSerial: selectedAsset.serial,
+                moveFeedback: {
+                    status: 'success',
+                    message: `Verplaatsing bevestigd: ${selectedAsset.serial} van ${fromLocation} naar ${destination}.`,
+                }
+            });
         };
         window.setAppMode = (mode) => {
             const allowed = ['orderflow', 'wms-v1'];
