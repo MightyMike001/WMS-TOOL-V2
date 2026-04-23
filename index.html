@@ -138,6 +138,31 @@
             return Array.from(locations).sort();
         })();
 
+        const MOCK_ASSETS = [
+            { serial: 'H2X386Y00010', deviceNumber: 'TRK-204', description: 'Linde H20T heftruck', location: 'C-LINKS', status: 'available', updatedAt: '2026-04-23T07:12:00Z' },
+            { serial: 'H2X386Y00011', deviceNumber: 'TRK-209', description: 'Linde E16 elektrotruck', location: 'W16', status: 'moving', updatedAt: '2026-04-23T08:41:00Z' },
+            { serial: 'H2X386Y00012', deviceNumber: 'TRK-221', description: 'Orderpicker N20', location: 'EXP-01', status: 'loading', updatedAt: '2026-04-23T08:03:00Z' },
+            { serial: 'H2X386Y00013', deviceNumber: 'TRK-227', description: 'Reachtruck R14', location: 'INK-01', status: 'receiving', updatedAt: '2026-04-23T06:55:00Z' },
+            { serial: 'H2X386Y00014', deviceNumber: 'TRK-230', description: 'Pallettruck MT15', location: 'W16', status: 'maintenance', updatedAt: '2026-04-22T21:18:00Z' },
+        ];
+
+        const MOCK_OPEN_MOVES = [
+            { id: 'MOVE-260423-001', serial: 'H2X386Y00010', from: 'C-LINKS', to: 'EXP-01', priority: 'high', status: 'open', createdAt: '2026-04-23T07:05:00Z' },
+            { id: 'MOVE-260423-002', serial: 'H2X386Y00011', from: 'W16', to: 'INK-01', priority: 'normal', status: 'open', createdAt: '2026-04-23T08:20:00Z' },
+            { id: 'MOVE-260423-003', serial: 'H2X386Y00013', from: 'INK-01', to: 'C-LINKS', priority: 'normal', status: 'open', createdAt: '2026-04-23T06:50:00Z' },
+        ];
+
+        const MOCK_RECEIPTS = [
+            { id: 'RCV-260423-014', serial: 'H2X386Y00013', dock: 'INK-01', supplier: 'Linde Parts Benelux', status: 'inbound', receivedAt: '2026-04-23T06:42:00Z' },
+            { id: 'RCV-260423-015', serial: 'H2X386Y00015', dock: 'INK-02', supplier: 'Hydro Systems BV', status: 'quality-check', receivedAt: '2026-04-23T07:58:00Z' },
+        ];
+
+        const MOCK_HISTORY_LOG = [
+            { id: 'LOG-9910', serial: 'H2X386Y00012', event: 'Verplaatsing bevestigd', from: 'W16', to: 'EXP-01', actor: 'JVD', loggedAt: '2026-04-23T05:34:00Z' },
+            { id: 'LOG-9911', serial: 'H2X386Y00010', event: 'Asset gekoppeld aan dock', from: 'C-LINKS', to: 'INK-01', actor: 'MRT', loggedAt: '2026-04-23T06:12:00Z' },
+            { id: 'LOG-9912', serial: 'H2X386Y00014', event: 'Status gewijzigd naar maintenance', from: 'W16', to: 'W16', actor: 'OPS', loggedAt: '2026-04-22T21:18:00Z' },
+        ];
+
         let state = {
             appMode: 'orderflow',
             view: 'login',
@@ -485,10 +510,77 @@
                         </div>
                     `, null, 'mb-3')}
                     ${GlassCard(`
-                        <p class="${t.textSec} text-xs uppercase tracking-widest mb-2">Status</p>
-                        <p class="${t.textMain} text-sm">Nieuwe WMS-v1 appstructuur is actief. Bestaande order/picking-flow draait los in <strong>Orderflow (legacy)</strong>.</p>
+                        ${renderWmsContent()}
                     `, null, 'flex-1')}
                     ${renderWmsNav()}
+                </div>
+            `;
+        }
+
+        function renderWmsContent() {
+            const t = getTheme();
+            if (state.wmsView === 'dashboard') {
+                return `
+                    <p class="${t.textSec} text-xs uppercase tracking-widest mb-2">Assets / Machines</p>
+                    <div class="space-y-2 max-h-[44vh] overflow-y-auto no-scrollbar pr-1">
+                        ${MOCK_ASSETS.map(asset => `
+                            <div class="p-3 rounded-xl border ${state.darkMode ? 'border-white/10 bg-white/5' : 'border-slate-200 bg-white'}">
+                                <div class="flex items-center justify-between gap-2">
+                                    <p class="${t.textMain} text-sm font-semibold">${asset.deviceNumber}</p>
+                                    <span class="text-[10px] px-2 py-0.5 rounded-full ${state.darkMode ? 'bg-white/10 text-white/70' : 'bg-slate-100 text-slate-600'}">${asset.status}</span>
+                                </div>
+                                <p class="${t.textSec} text-xs font-mono">${asset.serial}</p>
+                                <p class="${t.textSec} text-xs mt-1">${asset.description}</p>
+                                <p class="${t.textMain} text-xs mt-2">Actuele locatie: <span class="font-mono text-red-400">${asset.location}</span></p>
+                                <p class="${t.textSec} text-[10px] mt-1">Bijgewerkt: ${new Date(asset.updatedAt).toLocaleString('nl-NL', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</p>
+                            </div>
+                        `).join('')}
+                    </div>
+                `;
+            }
+
+            if (state.wmsView === 'move' || state.wmsView === 'tasks') {
+                return `
+                    <p class="${t.textSec} text-xs uppercase tracking-widest mb-2">Open verplaatsopdrachten</p>
+                    <div class="space-y-2">
+                        ${MOCK_OPEN_MOVES.map(move => `
+                            <div class="p-3 rounded-xl border ${state.darkMode ? 'border-white/10 bg-white/5' : 'border-slate-200 bg-white'}">
+                                <p class="${t.textMain} text-sm font-semibold">${move.id}</p>
+                                <p class="${t.textSec} text-xs font-mono">${move.serial}</p>
+                                <p class="${t.textMain} text-xs mt-1">${move.from} → ${move.to}</p>
+                            </div>
+                        `).join('')}
+                    </div>
+                `;
+            }
+
+            if (state.wmsView === 'receive') {
+                return `
+                    <p class="${t.textSec} text-xs uppercase tracking-widest mb-2">Ontvangsten</p>
+                    <div class="space-y-2">
+                        ${MOCK_RECEIPTS.map(receipt => `
+                            <div class="p-3 rounded-xl border ${state.darkMode ? 'border-white/10 bg-white/5' : 'border-slate-200 bg-white'}">
+                                <p class="${t.textMain} text-sm font-semibold">${receipt.id}</p>
+                                <p class="${t.textSec} text-xs">${receipt.supplier}</p>
+                                <p class="${t.textMain} text-xs mt-1">Dock ${receipt.dock} · ${receipt.status}</p>
+                                <p class="${t.textSec} text-xs font-mono mt-1">${receipt.serial}</p>
+                            </div>
+                        `).join('')}
+                    </div>
+                `;
+            }
+
+            return `
+                <p class="${t.textSec} text-xs uppercase tracking-widest mb-2">Historie / Logboek</p>
+                <div class="space-y-2">
+                    ${MOCK_HISTORY_LOG.map(log => `
+                        <div class="p-3 rounded-xl border ${state.darkMode ? 'border-white/10 bg-white/5' : 'border-slate-200 bg-white'}">
+                            <p class="${t.textMain} text-sm font-semibold">${log.event}</p>
+                            <p class="${t.textSec} text-xs font-mono">${log.serial}</p>
+                            <p class="${t.textMain} text-xs mt-1">${log.from} → ${log.to}</p>
+                            <p class="${t.textSec} text-[10px] mt-1">${log.actor} · ${new Date(log.loggedAt).toLocaleString('nl-NL', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</p>
+                        </div>
+                    `).join('')}
                 </div>
             `;
         }
