@@ -158,9 +158,9 @@
         ];
 
         const MOCK_HISTORY_LOG = [
-            { id: 'LOG-9910', serial: 'H2X386Y00012', event: 'Verplaatsing bevestigd', from: 'W16', to: 'EXP-01', actor: 'JVD', loggedAt: '2026-04-23T05:34:00Z' },
-            { id: 'LOG-9911', serial: 'H2X386Y00010', event: 'Asset gekoppeld aan dock', from: 'C-LINKS', to: 'INK-01', actor: 'MRT', loggedAt: '2026-04-23T06:12:00Z' },
-            { id: 'LOG-9912', serial: 'H2X386Y00014', event: 'Status gewijzigd naar maintenance', from: 'W16', to: 'W16', actor: 'OPS', loggedAt: '2026-04-22T21:18:00Z' },
+            { id: 'LOG-9910', type: 'move', serial: 'H2X386Y00012', deviceNumber: 'TRK-221', from: 'W16', to: 'EXP-01', operator: 'JVD', timestamp: '2026-04-23T05:34:00Z', note: 'Verplaatsing bevestigd' },
+            { id: 'LOG-9911', type: 'receipt', serial: 'H2X386Y00010', deviceNumber: 'TRK-204', from: 'C-LINKS', to: 'INK-01', operator: 'MRT', timestamp: '2026-04-23T06:12:00Z', note: 'Asset gekoppeld aan dock' },
+            { id: 'LOG-9912', type: 'move', serial: 'H2X386Y00014', deviceNumber: 'TRK-230', from: 'W16', to: 'W16', operator: 'OPS', timestamp: '2026-04-22T21:18:00Z', note: 'Status gewijzigd naar maintenance' },
         ];
 
         let state = {
@@ -243,6 +243,8 @@
             navGlass: state.darkMode ? 'bg-white/5 border-white/10' : 'bg-white/60 border-slate-200/60'
         });
         const getOpenMoveTasks = () => MOCK_OPEN_MOVES.filter(task => task.status === 'open');
+        const getSortedHistoryEntries = () =>
+            [...MOCK_HISTORY_LOG].sort((a, b) => new Date(b.timestamp || b.loggedAt || 0) - new Date(a.timestamp || a.loggedAt || 0));
 
         function syncBodyTheme(darkMode = state.darkMode) {
             const b = document.body;
@@ -701,15 +703,29 @@
                 `;
             }
 
+            const historyRows = getSortedHistoryEntries();
             return `
-                <p class="${t.textSec} text-xs uppercase tracking-widest mb-2">Historie / Logboek</p>
-                <div class="space-y-2">
-                    ${MOCK_HISTORY_LOG.map(log => `
+                <p class="${t.textSec} text-xs uppercase tracking-widest mb-2">Laatste activiteiten</p>
+                <div class="p-3 rounded-xl border ${state.darkMode ? 'border-white/10 bg-white/5' : 'border-slate-200 bg-white'} mb-2">
+                    <p class="${t.textMain} text-sm font-semibold">Historie / Audit trail</p>
+                    <p class="${t.textSec} text-xs mt-1">Nieuwste eerst · Verplaatsingen en ontvangsten direct zichtbaar.</p>
+                </div>
+                <div class="hidden md:grid grid-cols-[80px_140px_120px_84px_84px_70px_96px_minmax(120px,1fr)] gap-2 px-2 pb-2 ${t.textSec} text-[10px] uppercase tracking-widest">
+                    <span>Type</span><span>Serienummer</span><span>Devicenr</span><span>Van</span><span>Naar</span><span>Operator</span><span>Tijd</span><span>Opmerking</span>
+                </div>
+                <div class="space-y-2 max-h-[43vh] overflow-y-auto no-scrollbar pr-1">
+                    ${historyRows.map(log => `
                         <div class="p-3 rounded-xl border ${state.darkMode ? 'border-white/10 bg-white/5' : 'border-slate-200 bg-white'}">
-                            <p class="${t.textMain} text-sm font-semibold">${log.event}</p>
-                            <p class="${t.textSec} text-xs font-mono">${log.serial}</p>
-                            <p class="${t.textMain} text-xs mt-1">${log.from} → ${log.to}</p>
-                            <p class="${t.textSec} text-[10px] mt-1">${log.actor} · ${new Date(log.loggedAt).toLocaleString('nl-NL', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</p>
+                            <div class="grid grid-cols-1 md:grid-cols-[80px_140px_120px_84px_84px_70px_96px_minmax(120px,1fr)] gap-2 text-xs">
+                                <div><p class="${t.textSec} md:hidden text-[10px] uppercase">Type</p><span class="inline-flex px-2 py-0.5 rounded-full text-[10px] font-semibold ${log.type === 'move' ? 'bg-blue-500/20 text-blue-200' : 'bg-emerald-500/20 text-emerald-200'}">${log.type === 'move' ? 'move' : 'receipt'}</span></div>
+                                <div><p class="${t.textSec} md:hidden text-[10px] uppercase">Serienummer</p><p class="font-mono ${t.textMain}">${log.serial || '-'}</p></div>
+                                <div><p class="${t.textSec} md:hidden text-[10px] uppercase">Devicenummer</p><p class="font-mono ${t.textMain}">${log.deviceNumber || '-'}</p></div>
+                                <div><p class="${t.textSec} md:hidden text-[10px] uppercase">Van</p><p class="${t.textMain} font-mono">${log.from || '-'}</p></div>
+                                <div><p class="${t.textSec} md:hidden text-[10px] uppercase">Naar</p><p class="${t.textMain} font-mono">${log.to || '-'}</p></div>
+                                <div><p class="${t.textSec} md:hidden text-[10px] uppercase">Operator</p><p class="${t.textMain} font-semibold">${log.operator || '-'}</p></div>
+                                <div><p class="${t.textSec} md:hidden text-[10px] uppercase">Tijd</p><p class="${t.textMain}">${new Date(log.timestamp || log.loggedAt).toLocaleString('nl-NL', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</p></div>
+                                <div><p class="${t.textSec} md:hidden text-[10px] uppercase">Opmerking</p><p class="${t.textSec}">${log.note || '-'}</p></div>
+                            </div>
                         </div>
                     `).join('')}
                 </div>
@@ -1377,12 +1393,14 @@
 
             MOCK_HISTORY_LOG.unshift({
                 id: `LOG-${Date.now()}`,
+                type: 'receipt',
                 serial,
-                event: isNewAsset ? 'Nieuwe asset ontvangen' : 'Ontvangst verwerkt',
+                deviceNumber,
                 from: previousLocation,
                 to: location,
-                actor,
-                loggedAt: now,
+                operator: actor,
+                timestamp: now,
+                note: isNewAsset ? 'Nieuwe asset ontvangen' : 'Ontvangst verwerkt',
             });
 
             setState({
@@ -1471,12 +1489,14 @@
 
             const historyEntry = {
                 id: `LOG-${Date.now()}`,
+                type: 'move',
                 serial: selectedAsset.serial,
-                event: 'Verplaatsing bevestigd',
+                deviceNumber: selectedAsset.deviceNumber,
                 from: fromLocation,
                 to: destination,
-                actor: state.user?.initials || 'SYS',
-                loggedAt: now,
+                operator: state.user?.initials || 'SYS',
+                timestamp: now,
+                note: state.activeMoveTaskId ? `Verplaatsing vanuit opdracht ${state.activeMoveTaskId}` : 'Verplaatsing bevestigd',
             };
             MOCK_HISTORY_LOG.unshift(historyEntry);
 
