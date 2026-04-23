@@ -139,6 +139,7 @@
         })();
 
         let state = {
+            appMode: 'orderflow',
             view: 'login',
             user: null,
             darkMode: true,
@@ -173,6 +174,7 @@
             isLoadingInitialOrderLines: false,
             orderLineMap: {},
             orderLineState: {},
+            wmsView: 'dashboard',
         };
 
         // --- 2. STATE MANAGEMENT ---
@@ -433,6 +435,10 @@
                     <p class="text-sm mb-6 ${t.textSec}">Voer uw initialen in om te starten</p>
                     ${GlassCard(`
                         <div class="flex flex-col gap-3">
+                            <div class="grid grid-cols-2 gap-2 mb-1">
+                                <button onclick="setAppMode('orderflow')" class="py-2 px-3 rounded-xl text-xs font-semibold border transition-colors ${state.appMode === 'orderflow' ? 'bg-red-600 text-white border-red-500' : `${state.darkMode ? 'bg-white/5 text-white/70 border-white/15 hover:bg-white/10' : 'bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200'}`}">Orderflow (legacy)</button>
+                                <button onclick="setAppMode('wms-v1')" class="py-2 px-3 rounded-xl text-xs font-semibold border transition-colors ${state.appMode === 'wms-v1' ? 'bg-red-600 text-white border-red-500' : `${state.darkMode ? 'bg-white/5 text-white/70 border-white/15 hover:bg-white/10' : 'bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200'}`}">WMS v1</button>
+                            </div>
                             <label class="text-xs uppercase tracking-widest font-bold ${state.darkMode ? 'text-white/60' : 'text-slate-600'}">Operator ID</label>
                             <input type="text" value="${state.loginInput}" oninput="handleInput(this.value)" placeholder="AAA" maxlength="3"
                                 class="w-full bg-transparent text-center text-4xl font-mono font-bold outline-none border-b-2 py-3 tracking-[0.5em] uppercase placeholder:opacity-20 transition-colors ${state.darkMode ? 'text-white border-white/20 focus:border-red-500' : 'text-slate-900 border-slate-300 focus:border-red-500'}"
@@ -440,6 +446,49 @@
                             ${Button('Start Shift', 'handleLogin()', 'primary', 'arrow-right', state.loginInput.length !== 3)}
                         </div>
                     `)}
+                </div>
+            `;
+        }
+
+        function renderWmsShell() {
+            const t = getTheme();
+            const labels = {
+                dashboard: { title: 'WMS Dashboard', subtitle: 'Realtime overzicht van warehouse-operaties', icon: 'layout-dashboard' },
+                move: { title: 'Move', subtitle: 'Interne verplaatsingen tussen locaties', icon: 'move-right' },
+                tasks: { title: 'Tasks', subtitle: 'Toegewezen taken en prioriteiten', icon: 'list-checks' },
+                receive: { title: 'Receive', subtitle: 'Inkomende goederen verwerken', icon: 'inbox' },
+                history: { title: 'History', subtitle: 'Historische transacties en logs', icon: 'history' },
+                login: { title: 'WMS Login', subtitle: 'Authenticatie en sessiebeheer', icon: 'shield-check' },
+            };
+            const active = labels[state.wmsView] || labels.dashboard;
+
+            return `
+                <div class="h-full flex flex-col px-4 pt-4 pb-2 overflow-hidden">
+                    <div class="flex items-center justify-between gap-3 mb-3">
+                        <div>
+                            <p class="${t.textSec} text-[10px] uppercase tracking-[0.2em] font-semibold">WMS v1 mode</p>
+                            <h1 class="${t.textMain} text-lg font-bold">${active.title}</h1>
+                        </div>
+                        <button onclick="logout()" class="p-2 rounded-full ${state.darkMode ? 'bg-white/5 hover:bg-white/10' : 'bg-white/60 hover:bg-white/80'}">
+                            <i data-lucide="log-out" class="text-red-500" width="20"></i>
+                        </button>
+                    </div>
+                    ${GlassCard(`
+                        <div class="flex items-start gap-3">
+                            <div class="w-10 h-10 rounded-xl flex items-center justify-center ${state.darkMode ? 'bg-white/10 text-red-400' : 'bg-slate-100 text-red-500'}">
+                                <i data-lucide="${active.icon}" width="18"></i>
+                            </div>
+                            <div class="min-w-0">
+                                <h2 class="${t.textMain} font-semibold text-base">${active.title}</h2>
+                                <p class="${t.textSec} text-sm">${active.subtitle}</p>
+                            </div>
+                        </div>
+                    `, null, 'mb-3')}
+                    ${GlassCard(`
+                        <p class="${t.textSec} text-xs uppercase tracking-widest mb-2">Status</p>
+                        <p class="${t.textMain} text-sm">Nieuwe WMS-v1 appstructuur is actief. Bestaande order/picking-flow draait los in <strong>Orderflow (legacy)</strong>.</p>
+                    `, null, 'flex-1')}
+                    ${renderWmsNav()}
                 </div>
             `;
         }
@@ -793,6 +842,27 @@
             `, null, `mt-0 !p-1.5 flex-none ${t.navGlass} !rounded-xl`);
         }
 
+        function renderWmsNav() {
+            const t = getTheme();
+            const items = [
+                { view: 'dashboard', icon: 'layout-dashboard', label: 'Dashboard' },
+                { view: 'move', icon: 'move-right', label: 'Move' },
+                { view: 'tasks', icon: 'list-checks', label: 'Tasks' },
+                { view: 'receive', icon: 'inbox', label: 'Receive' },
+                { view: 'history', icon: 'history', label: 'History' },
+            ];
+            return GlassCard(`
+                <div class="grid grid-cols-5 gap-1">
+                    ${items.map(item => `
+                        <button onclick="navigateWms('${item.view}')" class="p-2 rounded-xl transition-colors flex flex-col items-center gap-1 ${state.wmsView === item.view ? 'text-red-500 bg-red-500/10' : `${t.textSec} hover:${t.textMain}`}">
+                            <i data-lucide="${item.icon}" width="18"></i>
+                            <span class="text-[10px] leading-none">${item.label}</span>
+                        </button>
+                    `).join('')}
+                </div>
+            `, null, `mt-0 !p-1.5 flex-none ${t.navGlass} !rounded-xl`);
+        }
+
         function renderScanner() {
             if (!state.showScanner) return '';
             return `
@@ -851,12 +921,27 @@
         window.handleInput = (val) => { state.loginInput = val.toUpperCase(); render(); const i=document.querySelector('input'); if(i){i.focus(); i.setSelectionRange(i.value.length,i.value.length);} };
         window.handleLogin = () => {
             if (state.loginInput.length === 3) {
-                setState({ user: { initials: state.loginInput }, view: 'dashboard' });
-                initializeOrderLineCounts();
+                const nextView = state.appMode === 'wms-v1' ? 'wms-v1' : 'dashboard';
+                setState({ user: { initials: state.loginInput }, view: nextView, wmsView: 'dashboard' });
+                if (state.appMode !== 'wms-v1') {
+                    initializeOrderLineCounts();
+                }
             }
         };
-        window.logout = () => setState({ user: null, view: 'login', loginInput: '' });
+        window.logout = () => setState({ user: null, view: 'login', loginInput: '', wmsView: 'dashboard' });
         window.navigate = (view) => setState({ view });
+        window.navigateWms = (view) => {
+            const allowed = ['login', 'dashboard', 'move', 'tasks', 'receive', 'history'];
+            if (allowed.includes(view)) {
+                setState({ wmsView: view });
+            }
+        };
+        window.setAppMode = (mode) => {
+            const allowed = ['orderflow', 'wms-v1'];
+            if (allowed.includes(mode)) {
+                setState({ appMode: mode });
+            }
+        };
         window.toggleTheme = () => {
             const nextDarkMode = !state.darkMode;
             setState({ darkMode: nextDarkMode });
@@ -1196,6 +1281,7 @@
                 case 'dashboard': html = renderDashboard(); break;
                 case 'picking': html = renderPicking(); break;
                 case 'asset-scan': html = renderAssetScan(); break;
+                case 'wms-v1': html = renderWmsShell(); break;
             }
             html += renderScanner();
             html += renderConfirmationModal(); // Render modal bovenop alles
