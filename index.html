@@ -147,9 +147,9 @@
         ];
 
         const MOCK_OPEN_MOVES = [
-            { id: 'MOVE-260423-001', serial: 'H2X386Y00010', from: 'C-LINKS', to: 'EXP-01', priority: 'high', status: 'open', createdAt: '2026-04-23T07:05:00Z' },
-            { id: 'MOVE-260423-002', serial: 'H2X386Y00011', from: 'W16', to: 'INK-01', priority: 'normal', status: 'open', createdAt: '2026-04-23T08:20:00Z' },
-            { id: 'MOVE-260423-003', serial: 'H2X386Y00013', from: 'INK-01', to: 'C-LINKS', priority: 'normal', status: 'open', createdAt: '2026-04-23T06:50:00Z' },
+            { id: 'MOVE-260423-001', serial: 'H2X386Y00010', from: 'C-LINKS', to: 'EXP-01', note: 'Spoed voor outbound lane.', requester: 'PLN', priority: 'high', status: 'open', createdAt: '2026-04-23T07:05:00Z', completedAt: null },
+            { id: 'MOVE-260423-002', serial: 'H2X386Y00011', from: 'W16', to: 'INK-01', note: 'Aanvoer naar inkomende controle.', requester: 'RCV', priority: 'normal', status: 'open', createdAt: '2026-04-23T08:20:00Z', completedAt: null },
+            { id: 'MOVE-260423-003', serial: 'H2X386Y00013', from: 'INK-01', to: 'C-LINKS', note: 'Retour na kwaliteitscheck.', requester: 'QCL', priority: 'normal', status: 'open', createdAt: '2026-04-23T06:50:00Z', completedAt: null },
         ];
 
         const MOCK_RECEIPTS = [
@@ -206,6 +206,14 @@
             moveFeedback: null,
             wmsScanInput: '',
             wmsScanFeedback: null,
+            taskForm: {
+                serial: '',
+                from: '',
+                to: '',
+                note: '',
+                requester: '',
+            },
+            activeMoveTaskId: null,
         };
 
         // --- 2. STATE MANAGEMENT ---
@@ -227,6 +235,7 @@
                 : 'bg-white/80 border-slate-200/60 shadow-[0_4px_24px_0_rgba(100,116,139,0.15)]',
             navGlass: state.darkMode ? 'bg-white/5 border-white/10' : 'bg-white/60 border-slate-200/60'
         });
+        const getOpenMoveTasks = () => MOCK_OPEN_MOVES.filter(task => task.status === 'open');
 
         function syncBodyTheme(darkMode = state.darkMode) {
             const b = document.body;
@@ -598,8 +607,9 @@
             }
 
             if (state.wmsView === 'tasks') {
+                const openTasks = getOpenMoveTasks();
                 return `
-                    <p class="${t.textSec} text-xs uppercase tracking-widest mb-2">Open verplaatsopdrachten</p>
+                    <p class="${t.textSec} text-xs uppercase tracking-widest mb-2">Open opdrachten</p>
                     <div class="p-3 rounded-xl border ${state.darkMode ? 'border-white/10 bg-white/5' : 'border-slate-200 bg-white'} mb-2">
                         <p class="${t.textSec} text-[10px] uppercase tracking-widest mb-1">Scan opdracht / serial / locatie</p>
                         <div class="flex gap-2">
@@ -607,15 +617,35 @@
                             <button onclick="submitWmsScan('tasks')" class="px-3 rounded-xl border text-xs font-semibold ${state.darkMode ? 'border-white/20 bg-white/10 hover:bg-white/15' : 'border-slate-300 bg-slate-100 hover:bg-slate-200'}">Verwerk</button>
                         </div>
                     </div>
+                    <div class="p-3 rounded-xl border ${state.darkMode ? 'border-white/10 bg-white/5' : 'border-slate-200 bg-white'} mb-2">
+                        <p class="${t.textSec} text-[10px] uppercase tracking-widest mb-2">Nieuwe opdracht</p>
+                        <div class="grid grid-cols-1 gap-2">
+                            <input type="text" value="${state.taskForm.serial}" oninput="updateTaskForm('serial', this.value)" placeholder="serienummer" class="w-full bg-transparent border rounded-xl px-3 py-2 text-sm font-mono outline-none ${state.darkMode ? 'border-white/20 text-white placeholder:text-white/30 focus:border-red-400' : 'border-slate-300 text-slate-900 placeholder:text-slate-400 focus:border-red-500'}" />
+                            <input type="text" value="${state.taskForm.from}" oninput="updateTaskForm('from', this.value)" placeholder="van-locatie" class="w-full bg-transparent border rounded-xl px-3 py-2 text-sm font-mono outline-none ${state.darkMode ? 'border-white/20 text-white placeholder:text-white/30 focus:border-red-400' : 'border-slate-300 text-slate-900 placeholder:text-slate-400 focus:border-red-500'}" />
+                            <input type="text" value="${state.taskForm.to}" oninput="updateTaskForm('to', this.value)" placeholder="naar-locatie" class="w-full bg-transparent border rounded-xl px-3 py-2 text-sm font-mono outline-none ${state.darkMode ? 'border-white/20 text-white placeholder:text-white/30 focus:border-red-400' : 'border-slate-300 text-slate-900 placeholder:text-slate-400 focus:border-red-500'}" />
+                            <input type="text" value="${state.taskForm.note}" oninput="updateTaskForm('note', this.value)" placeholder="opmerking" class="w-full bg-transparent border rounded-xl px-3 py-2 text-sm outline-none ${state.darkMode ? 'border-white/20 text-white placeholder:text-white/30 focus:border-red-400' : 'border-slate-300 text-slate-900 placeholder:text-slate-400 focus:border-red-500'}" />
+                            <input type="text" value="${state.taskForm.requester}" oninput="updateTaskForm('requester', this.value)" placeholder="aanvrager" class="w-full bg-transparent border rounded-xl px-3 py-2 text-sm font-mono outline-none ${state.darkMode ? 'border-white/20 text-white placeholder:text-white/30 focus:border-red-400' : 'border-slate-300 text-slate-900 placeholder:text-slate-400 focus:border-red-500'}" />
+                            <button onclick="createMoveTask()" class="px-3 py-2 rounded-xl border text-xs font-semibold ${state.darkMode ? 'border-emerald-500/50 bg-emerald-500/15 text-emerald-200 hover:bg-emerald-500/25' : 'border-emerald-300 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'}">Opslaan opdracht</button>
+                        </div>
+                    </div>
                     ${state.wmsScanFeedback ? `<div class="p-3 rounded-xl border ${state.wmsScanFeedback.status === 'success' ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-300' : 'border-amber-500/40 bg-amber-500/10 text-amber-200'} text-xs mb-2">${state.wmsScanFeedback.message}</div>` : ''}
                     <div class="space-y-2">
-                        ${MOCK_OPEN_MOVES.map(move => `
+                        ${openTasks.length ? openTasks.map(move => `
                             <div class="p-3 rounded-xl border ${state.darkMode ? 'border-white/10 bg-white/5' : 'border-slate-200 bg-white'}">
-                                <p class="${t.textMain} text-sm font-semibold">${move.id}</p>
-                                <p class="${t.textSec} text-xs font-mono">${move.serial}</p>
-                                <p class="${t.textMain} text-xs mt-1">${move.from} → ${move.to}</p>
+                                <div class="flex items-start justify-between gap-2">
+                                    <div>
+                                        <p class="${t.textMain} text-sm font-semibold">${move.id}</p>
+                                        <p class="${t.textSec} text-xs font-mono">${move.serial}</p>
+                                        <p class="${t.textMain} text-xs mt-1">${move.from} → ${move.to}</p>
+                                        <p class="${t.textSec} text-xs mt-1">Aanvrager: <span class="font-semibold">${move.requester || '-'}</span></p>
+                                        <p class="${t.textSec} text-xs">${move.note || 'Geen opmerking'}</p>
+                                    </div>
+                                    <button onclick="startMoveFromTask('${move.id}')" class="shrink-0 px-2 py-1 rounded-lg border text-[11px] font-semibold ${state.darkMode ? 'border-red-500/40 bg-red-500/15 text-red-200 hover:bg-red-500/25' : 'border-red-300 bg-red-50 text-red-700 hover:bg-red-100'}">
+                                        start verplaatsing
+                                    </button>
+                                </div>
                             </div>
-                        `).join('')}
+                        `).join('') : `<div class="p-3 rounded-xl border ${state.darkMode ? 'border-white/10 bg-white/5' : 'border-slate-200 bg-white'}"><p class="${t.textSec} text-xs">Geen open opdrachten.</p></div>`}
                     </div>
                 `;
             }
@@ -1204,8 +1234,9 @@
             }
 
             if (context === 'tasks') {
-                const taskBySerial = MOCK_OPEN_MOVES.find(task => normalizeScanCode(task.serial) === normalizedCode);
-                const taskByLocation = MOCK_OPEN_MOVES.find(task => normalizeScanCode(task.to) === normalizedCode || normalizeScanCode(task.from) === normalizedCode);
+                const openTasks = getOpenMoveTasks();
+                const taskBySerial = openTasks.find(task => normalizeScanCode(task.serial) === normalizedCode);
+                const taskByLocation = openTasks.find(task => normalizeScanCode(task.to) === normalizedCode || normalizeScanCode(task.from) === normalizedCode);
                 if (taskBySerial) {
                     setState({ wmsScanFeedback: { status: 'success', message: `Opdracht ${taskBySerial.id} gevonden voor serial ${taskBySerial.serial}.` } });
                     return;
@@ -1221,6 +1252,61 @@
             const code = state.wmsScanInput || '';
             processWmsScan(code, context);
             setState({ wmsScanInput: '' });
+        };
+        window.updateTaskForm = (field, value) => {
+            if (!['serial', 'from', 'to', 'note', 'requester'].includes(field)) return;
+            const shouldUppercase = ['serial', 'from', 'to', 'requester'].includes(field);
+            setState({
+                taskForm: {
+                    ...state.taskForm,
+                    [field]: shouldUppercase ? value.toUpperCase() : value,
+                },
+                wmsScanFeedback: null,
+            });
+        };
+        window.createMoveTask = () => {
+            const serial = (state.taskForm.serial || '').trim().toUpperCase();
+            const from = (state.taskForm.from || '').trim().toUpperCase();
+            const to = (state.taskForm.to || '').trim().toUpperCase();
+            const note = (state.taskForm.note || '').trim();
+            const requester = (state.taskForm.requester || '').trim().toUpperCase();
+            if (!serial || !from || !to || !requester) {
+                setState({ wmsScanFeedback: { status: 'warning', message: 'Vul serienummer, van-locatie, naar-locatie en aanvrager in.' } });
+                return;
+            }
+            const id = `MOVE-${new Date().toISOString().slice(2, 10).replace(/-/g, '')}-${String(MOCK_OPEN_MOVES.length + 1).padStart(3, '0')}`;
+            MOCK_OPEN_MOVES.unshift({
+                id,
+                serial,
+                from,
+                to,
+                note,
+                requester,
+                priority: 'normal',
+                status: 'open',
+                createdAt: new Date().toISOString(),
+                completedAt: null,
+            });
+            setState({
+                taskForm: { serial: '', from: '', to: '', note: '', requester: '' },
+                wmsScanFeedback: { status: 'success', message: `Opdracht ${id} aangemaakt.` },
+            });
+        };
+        window.startMoveFromTask = (taskId) => {
+            const task = MOCK_OPEN_MOVES.find(item => item.id === taskId && item.status === 'open');
+            if (!task) {
+                setState({ wmsScanFeedback: { status: 'warning', message: `Opdracht ${taskId} is niet meer open.` } });
+                return;
+            }
+            setState({
+                wmsView: 'move',
+                moveSearchInput: task.serial,
+                moveDestinationInput: task.to,
+                moveSelectedAssetSerial: task.serial,
+                activeMoveTaskId: task.id,
+                moveFeedback: { status: 'success', message: `Opdracht ${task.id} gestart. Controleer asset en bevestig verplaatsing.` },
+                wmsScanFeedback: null,
+            });
         };
 
         window.confirmMoveAsset = () => {
@@ -1262,10 +1348,22 @@
             };
             MOCK_HISTORY_LOG.unshift(historyEntry);
 
+            if (state.activeMoveTaskId) {
+                const taskIndex = MOCK_OPEN_MOVES.findIndex(task => task.id === state.activeMoveTaskId && task.status === 'open');
+                if (taskIndex !== -1) {
+                    MOCK_OPEN_MOVES[taskIndex] = {
+                        ...MOCK_OPEN_MOVES[taskIndex],
+                        status: 'completed',
+                        completedAt: now,
+                    };
+                }
+            }
+
             setState({
                 moveDestinationInput: '',
                 moveSearchInput: '',
                 moveSelectedAssetSerial: selectedAsset.serial,
+                activeMoveTaskId: null,
                 moveFeedback: {
                     status: 'success',
                     message: `Verplaatsing bevestigd: ${selectedAsset.serial} van ${fromLocation} naar ${destination}.`,
