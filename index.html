@@ -448,6 +448,9 @@
 
         function renderLogin() {
             const t = getTheme();
+            const loginLength = state.loginInput.length;
+            const hasLoginValue = loginLength > 0;
+            const isLoginValid = loginLength >= 2 && loginLength <= 4;
             return `
                 <div class="h-full flex flex-col items-center justify-center p-6">
                     <div class="mb-8 relative">
@@ -465,10 +468,13 @@
                                 <button onclick="setAppMode('wms-v1')" class="py-2 px-3 rounded-xl text-xs font-semibold border transition-colors ${state.appMode === 'wms-v1' ? 'bg-red-600 text-white border-red-500' : `${state.darkMode ? 'bg-white/5 text-white/70 border-white/15 hover:bg-white/10' : 'bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200'}`}">WMS v1</button>
                             </div>
                             <label class="text-xs uppercase tracking-widest font-bold ${state.darkMode ? 'text-white/60' : 'text-slate-600'}">Operator ID</label>
-                            <input type="text" value="${state.loginInput}" oninput="handleInput(this.value)" placeholder="AAA" maxlength="3"
+                            <input type="text" value="${state.loginInput}" oninput="handleInput(this.value)" placeholder="EXP" maxlength="4"
                                 class="w-full bg-transparent text-center text-4xl font-mono font-bold outline-none border-b-2 py-3 tracking-[0.5em] uppercase placeholder:opacity-20 transition-colors ${state.darkMode ? 'text-white border-white/20 focus:border-red-500' : 'text-slate-900 border-slate-300 focus:border-red-500'}"
                             />
-                            ${Button('Start Shift', 'handleLogin()', 'primary', 'arrow-right', state.loginInput.length !== 3)}
+                            <p class="text-xs ${hasLoginValue && !isLoginValid ? 'text-amber-300' : t.textSec}">
+                                Gebruik 2 t/m 4 letters (bijv. EXP, MK, WVB).
+                            </p>
+                            ${Button('Start Shift', 'handleLogin()', 'primary', 'arrow-right', !isLoginValid)}
                         </div>
                     `)}
                 </div>
@@ -493,6 +499,7 @@
                         <div>
                             <p class="${t.textSec} text-[10px] uppercase tracking-[0.2em] font-semibold">WMS v1 mode</p>
                             <h1 class="${t.textMain} text-lg font-bold">${active.title}</h1>
+                            <p class="${t.textSec} text-xs mt-0.5">Operator: <span class="font-mono font-semibold ${t.textMain}">${state.user?.initials || 'N/B'}</span></p>
                         </div>
                         <button onclick="logout()" class="p-2 rounded-full ${state.darkMode ? 'bg-white/5 hover:bg-white/10' : 'bg-white/60 hover:bg-white/80'}">
                             <i data-lucide="log-out" class="text-red-500" width="20"></i>
@@ -602,9 +609,10 @@
                             
                             <!-- Initialen (LINKSBOVEN) -->
                             <div class="header-initials transition-all duration-300">
-                                <div class="w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm ${state.darkMode ? 'bg-white text-black' : 'bg-slate-900 text-white'} shadow-lg">
-                                    ${state.user?.initials}
+                                <div class="w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm ${state.darkMode ? 'bg-white text-black' : 'bg-slate-900 text-white'} shadow-lg mb-1">
+                                    ${state.user?.initials || 'N/B'}
                                 </div>
+                                <p class="text-[10px] uppercase tracking-wider font-semibold ${t.textSec}">Operator</p>
                             </div>
 
                             <!-- Logout -->
@@ -1010,11 +1018,22 @@
         }
 
         // --- 5. HANDLERS ---
-        window.handleInput = (val) => { state.loginInput = val.toUpperCase(); render(); const i=document.querySelector('input'); if(i){i.focus(); i.setSelectionRange(i.value.length,i.value.length);} };
+        const normalizeInitialInput = (val) => (val || '').toUpperCase().replace(/[^A-Z]/g, '').slice(0, 4);
+        const isValidInitials = (value) => value.length >= 2 && value.length <= 4;
+        window.handleInput = (val) => {
+            state.loginInput = normalizeInitialInput(val);
+            render();
+            const i = document.querySelector('input');
+            if (i) {
+                i.focus();
+                i.setSelectionRange(i.value.length, i.value.length);
+            }
+        };
         window.handleLogin = () => {
-            if (state.loginInput.length === 3) {
+            const sanitizedInitials = normalizeInitialInput(state.loginInput);
+            if (isValidInitials(sanitizedInitials)) {
                 const nextView = state.appMode === 'wms-v1' ? 'wms-v1' : 'dashboard';
-                setState({ user: { initials: state.loginInput }, view: nextView, wmsView: 'dashboard' });
+                setState({ user: { initials: sanitizedInitials }, loginInput: sanitizedInitials, view: nextView, wmsView: 'dashboard' });
                 if (state.appMode !== 'wms-v1') {
                     initializeOrderLineCounts();
                 }
