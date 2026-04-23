@@ -1,45 +1,83 @@
+const NON_ALPHANUMERIC = /[^A-Z0-9]/g;
+const CONTROL_CHARS = /[\u0000-\u001F\u007F]/g;
+
+function compactNumericSegments(code) {
+    return code.replace(/(\d+)/g, (digits) => String(Number(digits)));
+}
+
 export function normalizeScanCode(rawCode) {
     const cleaned = String(rawCode ?? '')
+        .replace(CONTROL_CHARS, '')
         .trim()
-        .replace(/\s+/g, '')
         .toUpperCase();
 
     if (!cleaned) return '';
 
-    return cleaned.replace(/(^|[^0-9])(0+)(\d+)/g, (match, prefix, zeros, digits) => {
-        const numericPart = Number(`${zeros}${digits}`);
-        return `${prefix}${numericPart}`;
-    });
+    // Houd letters/cijfers over zodat spaties, streepjes en barcode-separators
+    // (zoals GS1/FNC separators) consistent gematcht kunnen worden.
+    return cleaned.replace(NON_ALPHANUMERIC, '');
 }
 
-export function findMatchingItems(rawCode, items = []) {
-    const normalizedCode = normalizeScanCode(rawCode);
+export function getScanCodeVariants(rawCode) {
+    const normalized = normalizeScanCode(rawCode);
+    if (!normalized) return [];
+
+    const compacted = compactNumericSegments(normalized);
+    if (compacted === normalized) {
+        return [normalized];
+    }
+
+    return [normalized, compacted];
+}
+
+function matchByFields(rawCode, records = [], fieldResolvers = {}) {
+    const variants = getScanCodeVariants(rawCode);
+    const normalizedCode = variants[0] || '';
 
     if (!normalizedCode) {
         return { matchedItems: [], matchedBy: null, normalizedCode: '' };
     }
 
-    const normalizedItems = items.map((item) => ({
-        item,
-        normalizedId: normalizeScanCode(item.id),
-        normalizedLocation: normalizeScanCode(item.location),
-    }));
+    for (const [matchKey, resolver] of Object.entries(fieldResolvers)) {
+        const matches = records.filter((record) => {
+            const rawValue = typeof resolver === 'function' ? resolver(record) : record?.[resolver];
+            if (!rawValue) return false;
 
-    const matchesById = normalizedItems
-        .filter((entry) => entry.normalizedId === normalizedCode)
-        .map((entry) => entry.item);
+            const recordVariants = getScanCodeVariants(rawValue);
+            return recordVariants.some((variant) => variants.includes(variant));
+        });
 
-    if (matchesById.length > 0) {
-        return { matchedItems: matchesById, matchedBy: 'id', normalizedCode };
+        if (matches.length > 0) {
+            return { matchedItems: matches, matchedBy: matchKey, normalizedCode };
+        }
     }
 
-    const matchesByLocation = normalizedItems
-        .filter((entry) => entry.normalizedLocation === normalizedCode)
-        .map((entry) => entry.item);
+    return { matchedItems: [], matchedBy: null, normalizedCode };
+}
+
+export function findMatchingItems(rawCode, items = []) {
+    return matchByFields(rawCode, items, {
+        id: (item) => item.id,
+        location: (item) => item.location,
+    });
+}
+
+export function findMatchingAssets(rawCode, assets = []) {
+    return matchByFields(rawCode, assets, {
+        serial: (asset) => asset.serial,
+        deviceNumber: (asset) => asset.deviceNumber,
+        location: (asset) => asset.location,
+    });
+}
+
+export function findMatchingLocations(rawCode, locations = []) {
+    const locationRecords = locations.map((location) => ({ location }));
+    const result = matchByFields(rawCode, locationRecords, {
+        location: (entry) => entry.location,
+    });
 
     return {
-        matchedItems: matchesByLocation,
-        matchedBy: matchesByLocation.length > 0 ? 'location' : null,
-        normalizedCode,
+        ...result,
+        matchedItems: result.matchedItems.map((entry) => entry.location),
     };
 }
