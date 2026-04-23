@@ -1,0 +1,876 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>WMS Mockup V1</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
+    <style>
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        #reader video { object-fit: cover; width: 100% !important; height: 100% !important; border-radius: 1.5rem; }
+    </style>
+</head>
+<body class="bg-[#050505] text-white h-screen w-screen overflow-hidden font-sans selection:bg-red-500/30">
+    <div class="fixed inset-0 pointer-events-none overflow-hidden">
+        <div class="absolute -top-[20%] -left-[10%] w-[70%] h-[50%] bg-red-600/20 rounded-full blur-[120px] animate-pulse mix-blend-screen"></div>
+        <div class="absolute top-[40%] -right-[10%] w-[60%] h-[60%] bg-blue-600/10 rounded-full blur-[120px] mix-blend-screen"></div>
+    </div>
+    <div id="app" class="relative z-10 h-full w-full max-w-md mx-auto"></div>
+
+    <script>
+        const STORAGE_KEY = 'wms_mockup_v1_state';
+
+        const DEFAULT_DB = {
+            assets: [
+                { serial: 'H2X386Y00010', device: 'DV-240015', description: 'Linde E20 Heftruck', location: 'C-LINKS', status: 'Beschikbaar', updatedAt: '2026-04-23T08:05:00Z' },
+                { serial: 'H2X386Y00011', device: 'DV-240016', description: 'Linde Xi10', location: 'W16', status: 'Op werkvloer', updatedAt: '2026-04-23T07:55:00Z' },
+                { serial: 'H2X386Y00012', device: 'DV-240017', description: 'Linde R14 Reachtruck', location: 'EXP-01', status: 'Beschikbaar', updatedAt: '2026-04-23T07:40:00Z' },
+                { serial: 'H2X386Y00013', device: 'DV-240018', description: 'Tennant T16', location: 'INK-01', status: 'Ontvangst', updatedAt: '2026-04-23T07:25:00Z' },
+                { serial: 'H2X386Y00014', device: 'DV-240019', description: 'Linde E35', location: 'C-RECHTS', status: 'Beschikbaar', updatedAt: '2026-04-23T07:10:00Z' }
+            ],
+            tasks: [
+                { id: 'REQ-1001', serial: 'H2X386Y00010', fromLocation: 'C-LINKS', toLocation: 'W16', requester: 'WVB', notes: 'Klaarzetten voor werkplaats 16', status: 'Open', createdAt: '2026-04-23T07:30:00Z' },
+                { id: 'REQ-1002', serial: 'H2X386Y00012', fromLocation: 'EXP-01', toLocation: 'DOCK-02', requester: 'EXP', notes: 'Transport gereedmaken', status: 'Open', createdAt: '2026-04-23T07:50:00Z' }
+            ],
+            receipts: [
+                { id: 'RCV-9001', receiptNumber: 'PAK-77821', externalNumber: 'EXT-9901', serial: 'H2X386Y00013', device: 'DV-240018', location: 'INK-01', operator: 'SYS', createdAt: '2026-04-23T07:25:00Z' }
+            ],
+            history: [
+                { id: 'HIS-1', type: 'move', serial: 'H2X386Y00011', device: 'DV-240016', fromLocation: 'C-LINKS', toLocation: 'W16', operator: 'EXP', note: 'Werkplaats aanvraag', createdAt: '2026-04-23T07:55:00Z' },
+                { id: 'HIS-2', type: 'receipt', serial: 'H2X386Y00013', device: 'DV-240018', fromLocation: 'LEVERANCIER', toLocation: 'INK-01', operator: 'SYS', note: 'Ontvangen op pakbon PAK-77821', createdAt: '2026-04-23T07:25:00Z' }
+            ]
+        };
+
+        let state = {
+            view: 'login',
+            user: null,
+            darkMode: true,
+            flash: null,
+            showScanner: false,
+            scannerTarget: null,
+            html5QrCode: null,
+            scannerManualValue: '',
+            activeTaskId: null,
+            forms: {
+                move: { serial: '', toLocation: '', note: '' },
+                task: { serial: '', fromLocation: '', toLocation: '', notes: '' },
+                receipt: { receiptNumber: '', externalNumber: '', serial: '', device: '', location: 'INK-01' }
+            },
+            db: loadDb()
+        };
+
+        function loadDb() {
+            try {
+                const stored = JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null');
+                if (!stored) return structuredClone(DEFAULT_DB);
+                return {
+                    assets: Array.isArray(stored.assets) ? stored.assets : structuredClone(DEFAULT_DB.assets),
+                    tasks: Array.isArray(stored.tasks) ? stored.tasks : structuredClone(DEFAULT_DB.tasks),
+                    receipts: Array.isArray(stored.receipts) ? stored.receipts : structuredClone(DEFAULT_DB.receipts),
+                    history: Array.isArray(stored.history) ? stored.history : structuredClone(DEFAULT_DB.history)
+                };
+            } catch (error) {
+                return structuredClone(DEFAULT_DB);
+            }
+        }
+
+        function persistDb() {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(state.db));
+        }
+
+        function normalizeCode(value) {
+            return String(value || '').trim().replace(/\s+/g, '').toUpperCase();
+        }
+
+        function setState(updates) {
+            state = { ...state, ...updates };
+            persistDb();
+            render();
+        }
+
+        function setFlash(message, variant = 'success') {
+            state.flash = { message, variant };
+            render();
+            setTimeout(() => {
+                if (state.flash?.message === message) {
+                    state.flash = null;
+                    render();
+                }
+            }, 2200);
+        }
+
+        function getTheme() {
+            return {
+                bg: state.darkMode ? 'bg-[#050505]' : 'bg-[#f3f6fb]',
+                textMain: state.darkMode ? 'text-white' : 'text-slate-900',
+                textSec: state.darkMode ? 'text-white/60' : 'text-slate-500',
+                glass: state.darkMode
+                    ? 'bg-white/10 border-white/15 shadow-[0_8px_32px_0_rgba(0,0,0,0.35)]'
+                    : 'bg-white/80 border-slate-200 shadow-[0_8px_32px_0_rgba(148,163,184,0.18)]',
+                chip: state.darkMode ? 'bg-white/10 border-white/15' : 'bg-slate-100 border-slate-200',
+                input: state.darkMode ? 'border-white/15 bg-white/5 text-white placeholder:text-white/30' : 'border-slate-200 bg-white text-slate-900 placeholder:text-slate-400',
+                nav: state.darkMode ? 'bg-white/5 border-white/10' : 'bg-white/70 border-slate-200'
+            };
+        }
+
+        function syncBodyTheme() {
+            const body = document.body;
+            body.className = `${state.darkMode ? 'bg-[#050505] text-white' : 'bg-[#f3f6fb] text-slate-900'} h-screen w-screen overflow-hidden font-sans selection:bg-red-500/30`;
+        }
+
+        function GlassCard(content, extraClasses = '') {
+            const t = getTheme();
+            return `
+                <div class="relative overflow-hidden rounded-2xl border backdrop-blur-xl ${t.glass} ${extraClasses}">
+                    <div class="absolute inset-0 pointer-events-none bg-gradient-to-br ${state.darkMode ? 'from-white/10' : 'from-white/60'} to-transparent"></div>
+                    <div class="relative z-10 p-4">${content}</div>
+                </div>
+            `;
+        }
+
+        function Button(label, onClick, variant = 'primary', icon = '') {
+            const variants = {
+                primary: 'bg-red-600 text-white border-red-500 hover:bg-red-500',
+                secondary: state.darkMode ? 'bg-white/10 text-white border-white/15 hover:bg-white/15' : 'bg-white text-slate-900 border-slate-200 hover:bg-slate-50',
+                success: 'bg-emerald-600 text-white border-emerald-500 hover:bg-emerald-500'
+            };
+            return `
+                <button onclick="${onClick}" class="w-full px-4 py-3 rounded-xl border font-semibold flex items-center justify-center gap-2 transition-all active:scale-95 ${variants[variant]}">
+                    ${icon ? `<i data-lucide="${icon}" width="18"></i>` : ''}
+                    <span>${label}</span>
+                </button>
+            `;
+        }
+
+        function nowIso() {
+            return new Date().toISOString();
+        }
+
+        function makeId(prefix) {
+            return `${prefix}-${Math.floor(Math.random() * 9000) + 1000}`;
+        }
+
+        function formatDateTime(value) {
+            return new Date(value).toLocaleString('nl-NL', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+        }
+
+        function getAssetByCode(code) {
+            const normalized = normalizeCode(code);
+            return state.db.assets.find(asset => normalizeCode(asset.serial) === normalized || normalizeCode(asset.device) === normalized) || null;
+        }
+
+        function getAssetBySerial(serial) {
+            return state.db.assets.find(asset => normalizeCode(asset.serial) === normalizeCode(serial)) || null;
+        }
+
+        function getOpenTasks() {
+            return state.db.tasks.filter(task => task.status === 'Open');
+        }
+
+        function getStats() {
+            return {
+                assets: state.db.assets.length,
+                openTasks: getOpenTasks().length,
+                receiptsToday: state.db.receipts.length,
+                movesToday: state.db.history.filter(item => item.type === 'move').length
+            };
+        }
+
+        function updateForm(section, field, value) {
+            state.forms = {
+                ...state.forms,
+                [section]: {
+                    ...state.forms[section],
+                    [field]: value
+                }
+            };
+            render();
+        }
+
+        function moveAsset({ serial, toLocation, note = '', source = 'Direct', linkedTaskId = null }) {
+            const asset = getAssetBySerial(serial);
+            if (!asset) {
+                setFlash('Serienummer niet gevonden.', 'warning');
+                return;
+            }
+
+            const destination = normalizeCode(toLocation);
+            if (!destination) {
+                setFlash('Doellocatie ontbreekt.', 'warning');
+                return;
+            }
+
+            const fromLocation = asset.location;
+            asset.location = destination;
+            asset.status = destination.startsWith('W') ? 'Op werkvloer' : 'Beschikbaar';
+            asset.updatedAt = nowIso();
+
+            state.db.history.unshift({
+                id: makeId('HIS'),
+                type: 'move',
+                serial: asset.serial,
+                device: asset.device,
+                fromLocation,
+                toLocation: destination,
+                operator: state.user.initials,
+                note: note || source,
+                createdAt: nowIso()
+            });
+
+            if (linkedTaskId) {
+                const task = state.db.tasks.find(item => item.id === linkedTaskId);
+                if (task) task.status = 'Voltooid';
+            }
+
+            state.forms.move = { serial: '', toLocation: '', note: '' };
+            state.activeTaskId = null;
+            setState({ db: state.db, forms: state.forms, activeTaskId: state.activeTaskId });
+            setFlash(`Machine ${asset.serial} verplaatst naar ${destination}.`);
+        }
+
+        function receiveAsset() {
+            const form = state.forms.receipt;
+            const serial = normalizeCode(form.serial);
+            const device = normalizeCode(form.device);
+            const location = normalizeCode(form.location);
+            const receiptNumber = normalizeCode(form.receiptNumber);
+            const externalNumber = normalizeCode(form.externalNumber);
+
+            if (!serial || !device || !location || !receiptNumber || !externalNumber) {
+                setFlash('Vul pakbon, extern nummer, serienummer, devicenummer en locatie in.', 'warning');
+                return;
+            }
+
+            let asset = getAssetBySerial(serial);
+            const isNew = !asset;
+
+            if (!asset) {
+                asset = {
+                    serial,
+                    device,
+                    description: 'Nieuw ontvangen machine',
+                    location,
+                    status: 'Ontvangst',
+                    updatedAt: nowIso()
+                };
+                state.db.assets.unshift(asset);
+            } else {
+                asset.device = device;
+                asset.location = location;
+                asset.status = 'Ontvangst';
+                asset.updatedAt = nowIso();
+            }
+
+            state.db.receipts.unshift({
+                id: makeId('RCV'),
+                receiptNumber,
+                externalNumber,
+                serial,
+                device,
+                location,
+                operator: state.user.initials,
+                createdAt: nowIso()
+            });
+
+            state.db.history.unshift({
+                id: makeId('HIS'),
+                type: 'receipt',
+                serial,
+                device,
+                fromLocation: isNew ? 'LEVERANCIER' : 'ONBEKEND',
+                toLocation: location,
+                operator: state.user.initials,
+                note: `Ontvangst ${receiptNumber} / ${externalNumber}`,
+                createdAt: nowIso()
+            });
+
+            state.forms.receipt = { receiptNumber: '', externalNumber: '', serial: '', device: '', location: 'INK-01' };
+            setState({ db: state.db, forms: state.forms });
+            setFlash(`Ontvangst opgeslagen voor ${serial}.`);
+        }
+
+        function createTask() {
+            const form = state.forms.task;
+            const serial = normalizeCode(form.serial);
+            const fromLocation = normalizeCode(form.fromLocation);
+            const toLocation = normalizeCode(form.toLocation);
+            const notes = (form.notes || '').trim();
+
+            if (!serial || !fromLocation || !toLocation) {
+                setFlash('Vul serienummer, van-locatie en naar-locatie in.', 'warning');
+                return;
+            }
+
+            state.db.tasks.unshift({
+                id: makeId('REQ'),
+                serial,
+                fromLocation,
+                toLocation,
+                requester: state.user.initials,
+                notes,
+                status: 'Open',
+                createdAt: nowIso()
+            });
+
+            state.forms.task = { serial: '', fromLocation: '', toLocation: '', notes: '' };
+            setState({ db: state.db, forms: state.forms });
+            setFlash(`Opdracht aangemaakt voor ${serial}.`);
+        }
+
+        function useTask(taskId) {
+            const task = state.db.tasks.find(item => item.id === taskId);
+            if (!task) return;
+            state.forms.move = {
+                serial: task.serial,
+                toLocation: task.toLocation,
+                note: `Opdracht ${task.id} - ${task.notes || 'Geen opmerking'}`
+            };
+            state.activeTaskId = task.id;
+            setState({ forms: state.forms, activeTaskId: task.id, view: 'move' });
+        }
+
+        function resetMockData() {
+            state.db = structuredClone(DEFAULT_DB);
+            state.forms = {
+                move: { serial: '', toLocation: '', note: '' },
+                task: { serial: '', fromLocation: '', toLocation: '', notes: '' },
+                receipt: { receiptNumber: '', externalNumber: '', serial: '', device: '', location: 'INK-01' }
+            };
+            state.activeTaskId = null;
+            setState({ db: state.db, forms: state.forms, activeTaskId: null });
+            setFlash('Mockupdata is teruggezet.');
+        }
+
+        function renderLogin() {
+            const t = getTheme();
+            return `
+                <div class="h-full flex flex-col items-center justify-center p-6">
+                    <div class="mb-8 relative">
+                        <div class="absolute inset-0 bg-red-500 blur-3xl opacity-20 rounded-full animate-pulse"></div>
+                        <div class="w-20 h-20 rounded-2xl flex items-center justify-center ${state.darkMode ? 'bg-white/10 border border-white/20' : 'bg-white border border-slate-200 shadow-xl'}">
+                            <i data-lucide="scan-line" class="text-red-500" width="40" height="40"></i>
+                        </div>
+                    </div>
+                    <h1 class="text-2xl font-bold mb-2 ${t.textMain}">WMS Mockup V1</h1>
+                    <p class="text-sm mb-6 text-center ${t.textSec}">Mockup voor expeditie: verplaatsen, opdrachten en goederenontvangst.</p>
+                    ${GlassCard(`
+                        <div class="flex flex-col gap-4">
+                            <label class="text-xs uppercase tracking-widest font-bold ${t.textSec}">Initialen medewerker</label>
+                            <input type="text" value="${state.user?.initials || ''}" oninput="window.handleInitials(this.value)" placeholder="EXP" maxlength="4" class="w-full bg-transparent text-center text-4xl font-mono font-bold outline-none border-b-2 py-3 tracking-[0.4em] uppercase placeholder:opacity-20 ${state.darkMode ? 'text-white border-white/20 focus:border-red-500' : 'text-slate-900 border-slate-300 focus:border-red-500'}" />
+                            <p class="text-xs ${t.textSec}">Gebruik 2 tot 4 letters. Auth komt later in Power Apps.</p>
+                            ${Button('Start mockup', 'window.login()', 'primary', 'arrow-right')}
+                        </div>
+                    `)}
+                </div>
+            `;
+        }
+
+        function renderDashboard() {
+            const t = getTheme();
+            const stats = getStats();
+            const recentHistory = state.db.history.slice(0, 5);
+            return `
+                <div class="h-full flex flex-col px-4 pt-4 pb-2 overflow-hidden">
+                    <div class="flex items-center justify-between mb-4">
+                        <div>
+                            <p class="text-xs uppercase tracking-[0.25em] ${t.textSec}">Operator</p>
+                            <h1 class="text-xl font-bold ${t.textMain}">${state.user.initials}</h1>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <button onclick="window.toggleTheme()" class="p-2 rounded-xl border ${t.chip}"><i data-lucide="${state.darkMode ? 'sun' : 'moon'}" width="18"></i></button>
+                            <button onclick="window.logout()" class="p-2 rounded-xl border ${t.chip}"><i data-lucide="log-out" width="18"></i></button>
+                        </div>
+                    </div>
+
+                    ${GlassCard(`
+                        <div class="flex items-start justify-between gap-3 mb-4">
+                            <div>
+                                <p class="text-xs uppercase tracking-[0.25em] ${t.textSec}">Doel van deze mockup</p>
+                                <h2 class="text-lg font-bold ${t.textMain}">Scanbewegingen zichtbaar maken</h2>
+                            </div>
+                            <span class="px-3 py-1 rounded-full text-xs border ${t.chip}">Web mockup</span>
+                        </div>
+                        <div class="grid grid-cols-2 gap-3">
+                            <div class="rounded-xl border ${t.chip} p-3"><div class="text-2xl font-bold">${stats.assets}</div><div class="text-xs ${t.textSec}">Machines in mockdata</div></div>
+                            <div class="rounded-xl border ${t.chip} p-3"><div class="text-2xl font-bold">${stats.openTasks}</div><div class="text-xs ${t.textSec}">Open opdrachten</div></div>
+                            <div class="rounded-xl border ${t.chip} p-3"><div class="text-2xl font-bold">${stats.movesToday}</div><div class="text-xs ${t.textSec}">Verplaatsingen</div></div>
+                            <div class="rounded-xl border ${t.chip} p-3"><div class="text-2xl font-bold">${stats.receiptsToday}</div><div class="text-xs ${t.textSec}">Ontvangsten</div></div>
+                        </div>
+                    `, 'mb-4')}
+
+                    <div class="grid grid-cols-2 gap-3 mb-4">
+                        ${GlassCard(`<button onclick="window.navigate('move')" class="w-full text-left"><div class="flex items-center gap-3"><div class="w-10 h-10 rounded-xl bg-red-500/20 flex items-center justify-center"><i data-lucide="move-right" class="text-red-500" width="18"></i></div><div><div class="font-bold">Verplaatsen</div><div class="text-xs ${t.textSec}">Machine naar locatie</div></div></div></button>`)}
+                        ${GlassCard(`<button onclick="window.navigate('tasks')" class="w-full text-left"><div class="flex items-center gap-3"><div class="w-10 h-10 rounded-xl bg-blue-500/20 flex items-center justify-center"><i data-lucide="clipboard-list" class="text-blue-400" width="18"></i></div><div><div class="font-bold">Opdrachten</div><div class="text-xs ${t.textSec}">Aanvragen collega</div></div></div></button>`)}
+                        ${GlassCard(`<button onclick="window.navigate('receive')" class="w-full text-left"><div class="flex items-center gap-3"><div class="w-10 h-10 rounded-xl bg-emerald-500/20 flex items-center justify-center"><i data-lucide="package-check" class="text-emerald-400" width="18"></i></div><div><div class="font-bold">Ontvangst</div><div class="text-xs ${t.textSec}">Pakbon koppelen</div></div></div></button>`)}
+                        ${GlassCard(`<button onclick="window.navigate('history')" class="w-full text-left"><div class="flex items-center gap-3"><div class="w-10 h-10 rounded-xl bg-amber-500/20 flex items-center justify-center"><i data-lucide="history" class="text-amber-400" width="18"></i></div><div><div class="font-bold">Historie</div><div class="text-xs ${t.textSec}">Laatste scans</div></div></div></button>`)}
+                    </div>
+
+                    <div class="flex items-center justify-between mb-2">
+                        <h3 class="font-semibold ${t.textMain}">Recente activiteit</h3>
+                        <button onclick="window.resetMockData()" class="text-xs px-3 py-1 rounded-full border ${t.chip}">Reset mockdata</button>
+                    </div>
+                    <div class="flex-1 overflow-y-auto no-scrollbar space-y-2 pb-20">
+                        ${recentHistory.map(item => GlassCard(`
+                            <div class="flex items-start gap-3">
+                                <div class="w-10 h-10 rounded-xl flex items-center justify-center ${item.type === 'move' ? 'bg-red-500/20 text-red-400' : 'bg-emerald-500/20 text-emerald-400'}">
+                                    <i data-lucide="${item.type === 'move' ? 'move-right' : 'package-check'}" width="18"></i>
+                                </div>
+                                <div class="flex-1 min-w-0">
+                                    <div class="flex items-center justify-between gap-2 mb-1">
+                                        <h4 class="font-bold text-sm truncate">${item.serial}</h4>
+                                        <span class="text-[11px] ${t.textSec}">${formatDateTime(item.createdAt)}</span>
+                                    </div>
+                                    <p class="text-sm ${t.textSec}">${item.fromLocation} → <span class="font-mono text-white">${item.toLocation}</span></p>
+                                    <p class="text-xs ${t.textSec}">${item.note || ''}</p>
+                                </div>
+                            </div>
+                        `)).join('')}
+                    </div>
+                    ${renderNav()}
+                </div>
+            `;
+        }
+
+        function renderMove() {
+            const t = getTheme();
+            const form = state.forms.move;
+            const asset = getAssetByCode(form.serial);
+            const linkedTask = state.activeTaskId ? state.db.tasks.find(item => item.id === state.activeTaskId) : null;
+            return `
+                <div class="h-full flex flex-col px-4 pt-4 pb-2 overflow-hidden">
+                    <div class="flex items-center gap-3 mb-4">
+                        <button onclick="window.navigate('dashboard')" class="p-2 rounded-xl border ${t.chip}"><i data-lucide="arrow-left" width="18"></i></button>
+                        <div>
+                            <h1 class="text-lg font-bold ${t.textMain}">Verplaatsen</h1>
+                            <p class="text-xs ${t.textSec}">Scan of typ serienummer en doellocatie.</p>
+                        </div>
+                    </div>
+
+                    ${linkedTask ? GlassCard(`
+                        <div class="flex items-start justify-between gap-3">
+                            <div>
+                                <p class="text-xs uppercase tracking-[0.2em] ${t.textSec}">Actieve opdracht</p>
+                                <h3 class="font-bold">${linkedTask.id}</h3>
+                                <p class="text-sm ${t.textSec}">${linkedTask.fromLocation} → ${linkedTask.toLocation}</p>
+                            </div>
+                            <button onclick="window.clearTaskLink()" class="text-xs px-3 py-1 rounded-full border ${t.chip}">Loskoppelen</button>
+                        </div>
+                    `, 'mb-3') : ''}
+
+                    ${GlassCard(`
+                        <div class="space-y-4">
+                            <div>
+                                <div class="flex items-center justify-between mb-2">
+                                    <label class="text-xs uppercase tracking-[0.2em] ${t.textSec}">Serienummer of device</label>
+                                    <button onclick="window.openScanner('move-serial')" class="text-xs px-3 py-1 rounded-full border ${t.chip}">Scan</button>
+                                </div>
+                                <input value="${form.serial}" oninput="window.updateMoveField('serial', this.value)" placeholder="Bijv. H2X386Y00010" class="w-full rounded-xl border px-3 py-3 outline-none ${t.input}" />
+                            </div>
+                            <div>
+                                <div class="flex items-center justify-between mb-2">
+                                    <label class="text-xs uppercase tracking-[0.2em] ${t.textSec}">Naar locatie</label>
+                                    <button onclick="window.openScanner('move-location')" class="text-xs px-3 py-1 rounded-full border ${t.chip}">Scan</button>
+                                </div>
+                                <input value="${form.toLocation}" oninput="window.updateMoveField('toLocation', this.value)" placeholder="Bijv. W16" class="w-full rounded-xl border px-3 py-3 outline-none ${t.input}" />
+                            </div>
+                            <div>
+                                <label class="text-xs uppercase tracking-[0.2em] ${t.textSec}">Opmerking</label>
+                                <textarea oninput="window.updateMoveField('note', this.value)" placeholder="Optionele toelichting" class="w-full rounded-xl border px-3 py-3 outline-none min-h-[96px] ${t.input}">${form.note}</textarea>
+                            </div>
+                            ${Button('Verplaats machine', 'window.submitMove()', 'success', 'check')}
+                        </div>
+                    `, 'mb-3')}
+
+                    ${asset ? GlassCard(`
+                        <div class="flex items-start gap-3">
+                            <div class="w-12 h-12 rounded-xl bg-red-500/20 flex items-center justify-center text-red-400"><i data-lucide="truck" width="20"></i></div>
+                            <div class="flex-1 min-w-0">
+                                <div class="flex items-center justify-between gap-2 mb-1">
+                                    <h3 class="font-bold truncate">${asset.description}</h3>
+                                    <span class="text-[11px] px-2 py-1 rounded-full border ${t.chip}">${asset.status}</span>
+                                </div>
+                                <p class="text-sm ${t.textSec}">Serienummer: <span class="font-mono ${t.textMain}">${asset.serial}</span></p>
+                                <p class="text-sm ${t.textSec}">Devicenummer: <span class="font-mono ${t.textMain}">${asset.device}</span></p>
+                                <p class="text-sm ${t.textSec}">Huidige locatie: <span class="font-mono ${t.textMain}">${asset.location}</span></p>
+                            </div>
+                        </div>
+                    `, 'mb-3') : GlassCard(`<p class="text-sm ${t.textSec}">Nog geen bekende machine geladen. Scan een serienummer of devicenummer om de actuele locatie te tonen.</p>`, 'mb-3')}
+
+                    <div class="flex-1 overflow-y-auto no-scrollbar pb-20 space-y-2">
+                        ${state.db.assets.slice(0, 6).map(assetItem => GlassCard(`
+                            <button onclick="window.prefillMove('${assetItem.serial}')" class="w-full text-left flex items-center gap-3">
+                                <div class="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center"><i data-lucide="scan-search" width="18"></i></div>
+                                <div class="min-w-0 flex-1">
+                                    <div class="font-bold text-sm truncate">${assetItem.serial}</div>
+                                    <div class="text-xs ${t.textSec}">${assetItem.location} • ${assetItem.device}</div>
+                                </div>
+                            </button>
+                        `)).join('')}
+                    </div>
+                    ${renderNav()}
+                </div>
+            `;
+        }
+
+        function renderTasks() {
+            const t = getTheme();
+            const form = state.forms.task;
+            const tasks = state.db.tasks;
+            return `
+                <div class="h-full flex flex-col px-4 pt-4 pb-2 overflow-hidden">
+                    <div class="flex items-center gap-3 mb-4">
+                        <button onclick="window.navigate('dashboard')" class="p-2 rounded-xl border ${t.chip}"><i data-lucide="arrow-left" width="18"></i></button>
+                        <div>
+                            <h1 class="text-lg font-bold ${t.textMain}">Opdrachten</h1>
+                            <p class="text-xs ${t.textSec}">Aanvragen van collega's voor verplaatsingen.</p>
+                        </div>
+                    </div>
+
+                    ${GlassCard(`
+                        <div class="space-y-3">
+                            <div class="flex items-center justify-between gap-2">
+                                <label class="text-xs uppercase tracking-[0.2em] ${t.textSec}">Nieuwe opdracht</label>
+                                <button onclick="window.openScanner('task-serial')" class="text-xs px-3 py-1 rounded-full border ${t.chip}">Scan serienummer</button>
+                            </div>
+                            <input value="${form.serial}" oninput="window.updateTaskField('serial', this.value)" placeholder="Serienummer" class="w-full rounded-xl border px-3 py-3 outline-none ${t.input}" />
+                            <div class="grid grid-cols-2 gap-3">
+                                <input value="${form.fromLocation}" oninput="window.updateTaskField('fromLocation', this.value)" placeholder="Van locatie" class="w-full rounded-xl border px-3 py-3 outline-none ${t.input}" />
+                                <input value="${form.toLocation}" oninput="window.updateTaskField('toLocation', this.value)" placeholder="Naar locatie" class="w-full rounded-xl border px-3 py-3 outline-none ${t.input}" />
+                            </div>
+                            <textarea oninput="window.updateTaskField('notes', this.value)" placeholder="Opmerking" class="w-full rounded-xl border px-3 py-3 outline-none min-h-[80px] ${t.input}">${form.notes}</textarea>
+                            ${Button('Opdracht aanmaken', 'window.submitTask()', 'primary', 'plus')}
+                        </div>
+                    `, 'mb-3')}
+
+                    <div class="flex-1 overflow-y-auto no-scrollbar pb-20 space-y-2">
+                        ${tasks.map(task => GlassCard(`
+                            <div class="flex items-start gap-3">
+                                <div class="w-10 h-10 rounded-xl flex items-center justify-center ${task.status === 'Open' ? 'bg-blue-500/20 text-blue-400' : 'bg-emerald-500/20 text-emerald-400'}">
+                                    <i data-lucide="${task.status === 'Open' ? 'clipboard-list' : 'check-circle-2'}" width="18"></i>
+                                </div>
+                                <div class="flex-1 min-w-0">
+                                    <div class="flex items-center justify-between gap-2 mb-1">
+                                        <h4 class="font-bold text-sm">${task.id}</h4>
+                                        <span class="text-[11px] px-2 py-1 rounded-full border ${t.chip}">${task.status}</span>
+                                    </div>
+                                    <p class="text-sm ${t.textMain} font-mono">${task.serial}</p>
+                                    <p class="text-xs ${t.textSec}">${task.fromLocation} → ${task.toLocation}</p>
+                                    <p class="text-xs ${t.textSec}">Aangevraagd door ${task.requester} • ${formatDateTime(task.createdAt)}</p>
+                                    ${task.notes ? `<p class="text-xs ${t.textSec} mt-1">${task.notes}</p>` : ''}
+                                    ${task.status === 'Open' ? `<div class="mt-3">${Button('Start verplaatsing', `window.useTask('${task.id}')`, 'secondary', 'arrow-right')}</div>` : ''}
+                                </div>
+                            </div>
+                        `)).join('')}
+                    </div>
+                    ${renderNav()}
+                </div>
+            `;
+        }
+
+        function renderReceive() {
+            const t = getTheme();
+            const form = state.forms.receipt;
+            const linkedAsset = getAssetBySerial(form.serial);
+            return `
+                <div class="h-full flex flex-col px-4 pt-4 pb-2 overflow-hidden">
+                    <div class="flex items-center gap-3 mb-4">
+                        <button onclick="window.navigate('dashboard')" class="p-2 rounded-xl border ${t.chip}"><i data-lucide="arrow-left" width="18"></i></button>
+                        <div>
+                            <h1 class="text-lg font-bold ${t.textMain}">Goederenontvangst</h1>
+                            <p class="text-xs ${t.textSec}">Pakbon en extern nummer koppelen aan device en serienummer.</p>
+                        </div>
+                    </div>
+
+                    ${GlassCard(`
+                        <div class="space-y-3">
+                            <input value="${form.receiptNumber}" oninput="window.updateReceiptField('receiptNumber', this.value)" placeholder="Pakbonnummer" class="w-full rounded-xl border px-3 py-3 outline-none ${t.input}" />
+                            <input value="${form.externalNumber}" oninput="window.updateReceiptField('externalNumber', this.value)" placeholder="Extern nummer" class="w-full rounded-xl border px-3 py-3 outline-none ${t.input}" />
+                            <div class="grid grid-cols-1 gap-3">
+                                <div>
+                                    <div class="flex items-center justify-between mb-2"><label class="text-xs uppercase tracking-[0.2em] ${t.textSec}">Serienummer</label><button onclick="window.openScanner('receipt-serial')" class="text-xs px-3 py-1 rounded-full border ${t.chip}">Scan</button></div>
+                                    <input value="${form.serial}" oninput="window.updateReceiptField('serial', this.value)" placeholder="Serienummer" class="w-full rounded-xl border px-3 py-3 outline-none ${t.input}" />
+                                </div>
+                                <div>
+                                    <div class="flex items-center justify-between mb-2"><label class="text-xs uppercase tracking-[0.2em] ${t.textSec}">Devicenummer</label><button onclick="window.openScanner('receipt-device')" class="text-xs px-3 py-1 rounded-full border ${t.chip}">Scan</button></div>
+                                    <input value="${form.device}" oninput="window.updateReceiptField('device', this.value)" placeholder="Devicenummer" class="w-full rounded-xl border px-3 py-3 outline-none ${t.input}" />
+                                </div>
+                                <div>
+                                    <div class="flex items-center justify-between mb-2"><label class="text-xs uppercase tracking-[0.2em] ${t.textSec}">Ontvangstlocatie</label><button onclick="window.openScanner('receipt-location')" class="text-xs px-3 py-1 rounded-full border ${t.chip}">Scan</button></div>
+                                    <input value="${form.location}" oninput="window.updateReceiptField('location', this.value)" placeholder="Bijv. INK-01" class="w-full rounded-xl border px-3 py-3 outline-none ${t.input}" />
+                                </div>
+                            </div>
+                            ${Button('Ontvangst registreren', 'window.submitReceipt()', 'success', 'package-check')}
+                        </div>
+                    `, 'mb-3')}
+
+                    ${linkedAsset ? GlassCard(`
+                        <p class="text-xs uppercase tracking-[0.2em] ${t.textSec} mb-2">Bekende machine</p>
+                        <h3 class="font-bold mb-1">${linkedAsset.description}</h3>
+                        <p class="text-sm ${t.textSec}">Huidige locatie: <span class="font-mono ${t.textMain}">${linkedAsset.location}</span></p>
+                        <p class="text-sm ${t.textSec}">Huidig device: <span class="font-mono ${t.textMain}">${linkedAsset.device}</span></p>
+                    `, 'mb-3') : GlassCard(`<p class="text-sm ${t.textSec}">Nog geen bestaand serienummer gevonden. Bij registreren wordt een nieuwe machine aangemaakt in de mockup.</p>`, 'mb-3')}
+
+                    <div class="flex-1 overflow-y-auto no-scrollbar pb-20 space-y-2">
+                        ${state.db.receipts.slice(0, 8).map(item => GlassCard(`
+                            <div class="flex items-start gap-3">
+                                <div class="w-10 h-10 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center"><i data-lucide="package-check" width="18"></i></div>
+                                <div class="flex-1 min-w-0">
+                                    <div class="font-bold text-sm">${item.serial}</div>
+                                    <div class="text-xs ${t.textSec}">${item.receiptNumber} • ${item.externalNumber}</div>
+                                    <div class="text-xs ${t.textSec}">${item.location} • ${formatDateTime(item.createdAt)}</div>
+                                </div>
+                            </div>
+                        `)).join('')}
+                    </div>
+                    ${renderNav()}
+                </div>
+            `;
+        }
+
+        function renderHistory() {
+            const t = getTheme();
+            return `
+                <div class="h-full flex flex-col px-4 pt-4 pb-2 overflow-hidden">
+                    <div class="flex items-center gap-3 mb-4">
+                        <button onclick="window.navigate('dashboard')" class="p-2 rounded-xl border ${t.chip}"><i data-lucide="arrow-left" width="18"></i></button>
+                        <div>
+                            <h1 class="text-lg font-bold ${t.textMain}">Historie</h1>
+                            <p class="text-xs ${t.textSec}">Laatste verplaatsingen en ontvangsten.</p>
+                        </div>
+                    </div>
+                    <div class="flex-1 overflow-y-auto no-scrollbar pb-20 space-y-2">
+                        ${state.db.history.map(item => GlassCard(`
+                            <div class="flex items-start gap-3">
+                                <div class="w-10 h-10 rounded-xl flex items-center justify-center ${item.type === 'move' ? 'bg-red-500/20 text-red-400' : 'bg-emerald-500/20 text-emerald-400'}">
+                                    <i data-lucide="${item.type === 'move' ? 'move-right' : 'package-check'}" width="18"></i>
+                                </div>
+                                <div class="flex-1 min-w-0">
+                                    <div class="flex items-center justify-between gap-2 mb-1">
+                                        <h4 class="font-bold text-sm">${item.serial}</h4>
+                                        <span class="text-[11px] ${t.textSec}">${formatDateTime(item.createdAt)}</span>
+                                    </div>
+                                    <p class="text-sm ${t.textSec}">${item.fromLocation} → <span class="font-mono ${t.textMain}">${item.toLocation}</span></p>
+                                    <p class="text-xs ${t.textSec}">Device ${item.device || '-'} • ${item.operator}</p>
+                                    ${item.note ? `<p class="text-xs ${t.textSec}">${item.note}</p>` : ''}
+                                </div>
+                            </div>
+                        `)).join('')}
+                    </div>
+                    ${renderNav()}
+                </div>
+            `;
+        }
+
+        function renderNav() {
+            const t = getTheme();
+            return GlassCard(`
+                <div class="flex justify-around items-center">
+                    <button onclick="window.navigate('dashboard')" class="p-2 rounded-xl ${state.view === 'dashboard' ? 'text-red-500 bg-red-500/10' : t.textSec}"><i data-lucide="home" width="20"></i></button>
+                    <button onclick="window.navigate('move')" class="p-2 rounded-xl ${state.view === 'move' ? 'text-red-500 bg-red-500/10' : t.textSec}"><i data-lucide="move-right" width="20"></i></button>
+                    <button onclick="window.navigate('tasks')" class="p-2 rounded-xl ${state.view === 'tasks' ? 'text-red-500 bg-red-500/10' : t.textSec}"><i data-lucide="clipboard-list" width="20"></i></button>
+                    <button onclick="window.navigate('receive')" class="p-2 rounded-xl ${state.view === 'receive' ? 'text-red-500 bg-red-500/10' : t.textSec}"><i data-lucide="package-check" width="20"></i></button>
+                    <button onclick="window.navigate('history')" class="p-2 rounded-xl ${state.view === 'history' ? 'text-red-500 bg-red-500/10' : t.textSec}"><i data-lucide="history" width="20"></i></button>
+                </div>
+            `, `fixed bottom-3 left-4 right-4 max-w-md mx-auto !p-1.5 ${t.nav}`);
+        }
+
+        function renderScanner() {
+            if (!state.showScanner) return '';
+            const labels = {
+                'move-serial': 'Scan serienummer of device',
+                'move-location': 'Scan doellocatie',
+                'task-serial': 'Scan serienummer voor opdracht',
+                'receipt-serial': 'Scan serienummer',
+                'receipt-device': 'Scan devicenummer',
+                'receipt-location': 'Scan ontvangstlocatie'
+            };
+            return `
+                <div class="fixed inset-0 z-50 bg-black flex flex-col">
+                    <div class="p-4 flex items-center justify-between">
+                        <div>
+                            <h3 class="font-bold text-white">Scanner mockup</h3>
+                            <p class="text-sm text-white/60">${labels[state.scannerTarget] || 'Scan code'}</p>
+                        </div>
+                        <button onclick="window.closeScanner()" class="p-2 rounded-xl bg-white/10 border border-white/15 text-white"><i data-lucide="x" width="18"></i></button>
+                    </div>
+                    <div class="px-4 pb-4">
+                        <div id="reader" class="h-72 rounded-3xl overflow-hidden bg-black border border-white/10"></div>
+                    </div>
+                    <div class="px-4 pb-6 space-y-3">
+                        <p class="text-xs uppercase tracking-[0.2em] text-white/60">Mock input</p>
+                        <div class="flex gap-2">
+                            <input value="${state.scannerManualValue}" oninput="window.updateScannerManual(this.value)" placeholder="Typ gescande code" class="flex-1 rounded-xl border border-white/15 bg-white/10 px-3 py-3 text-white outline-none placeholder:text-white/30" />
+                            <button onclick="window.confirmManualScan()" class="px-4 py-3 rounded-xl bg-red-600 text-white font-semibold">Gebruik</button>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderFlash() {
+            if (!state.flash) return '';
+            const palette = state.flash.variant === 'warning'
+                ? 'bg-amber-500/15 border-amber-500/30 text-amber-100'
+                : 'bg-emerald-500/15 border-emerald-500/30 text-emerald-100';
+            return `
+                <div class="fixed top-4 left-4 right-4 z-50 max-w-md mx-auto">
+                    <div class="rounded-2xl border px-4 py-3 backdrop-blur-xl ${palette}">${state.flash.message}</div>
+                </div>
+            `;
+        }
+
+        function routeScanResult(rawValue) {
+            const value = normalizeCode(rawValue);
+            if (!value) return;
+            switch (state.scannerTarget) {
+                case 'move-serial':
+                    updateForm('move', 'serial', value);
+                    break;
+                case 'move-location':
+                    updateForm('move', 'toLocation', value);
+                    break;
+                case 'task-serial':
+                    updateForm('task', 'serial', value);
+                    const asset = getAssetBySerial(value);
+                    if (asset) updateForm('task', 'fromLocation', asset.location);
+                    break;
+                case 'receipt-serial':
+                    updateForm('receipt', 'serial', value);
+                    break;
+                case 'receipt-device':
+                    updateForm('receipt', 'device', value);
+                    break;
+                case 'receipt-location':
+                    updateForm('receipt', 'location', value);
+                    break;
+            }
+            closeScanner();
+        }
+
+        window.handleInitials = (value) => {
+            const initials = normalizeCode(value).slice(0, 4);
+            state.user = initials ? { initials } : null;
+            render();
+        };
+
+        window.login = () => {
+            const initials = normalizeCode(state.user?.initials || '');
+            if (initials.length < 2 || initials.length > 4) {
+                setFlash('Gebruik 2 tot 4 initialen.', 'warning');
+                return;
+            }
+            state.user = { initials };
+            setState({ user: state.user, view: 'dashboard' });
+        };
+
+        window.logout = () => {
+            state.user = null;
+            state.view = 'login';
+            render();
+        };
+
+        window.navigate = (view) => setState({ view });
+        window.toggleTheme = () => { state.darkMode = !state.darkMode; render(); };
+        window.updateMoveField = (field, value) => updateForm('move', field, value);
+        window.updateTaskField = (field, value) => updateForm('task', field, value);
+        window.updateReceiptField = (field, value) => updateForm('receipt', field, value);
+        window.updateScannerManual = (value) => { state.scannerManualValue = value; render(); };
+        window.prefillMove = (serial) => { updateForm('move', 'serial', serial); setState({ view: 'move' }); };
+        window.clearTaskLink = () => setState({ activeTaskId: null });
+        window.useTask = useTask;
+        window.resetMockData = resetMockData;
+
+        window.submitMove = () => {
+            const form = state.forms.move;
+            const asset = getAssetByCode(form.serial);
+            if (!asset) {
+                setFlash('Machine niet gevonden op serienummer of devicenummer.', 'warning');
+                return;
+            }
+            moveAsset({
+                serial: asset.serial,
+                toLocation: form.toLocation,
+                note: form.note,
+                source: state.activeTaskId ? `Opdracht ${state.activeTaskId}` : 'Directe verplaatsing',
+                linkedTaskId: state.activeTaskId
+            });
+        };
+
+        window.submitTask = createTask;
+        window.submitReceipt = receiveAsset;
+
+        function startCamera() {
+            const reader = new Html5Qrcode('reader');
+            state.html5QrCode = reader;
+            reader.start(
+                { facingMode: 'environment' },
+                { fps: 10, qrbox: { width: 240, height: 240 } },
+                (decodedText) => routeScanResult(decodedText),
+                () => {}
+            ).catch(() => {
+                setFlash('Camera start niet. Gebruik mock input onderaan.', 'warning');
+            });
+        }
+
+        function closeScanner() {
+            if (state.html5QrCode) {
+                state.html5QrCode.stop().then(() => {
+                    state.html5QrCode.clear();
+                    state.html5QrCode = null;
+                    state.showScanner = false;
+                    state.scannerTarget = null;
+                    state.scannerManualValue = '';
+                    render();
+                }).catch(() => {
+                    state.html5QrCode = null;
+                    state.showScanner = false;
+                    state.scannerTarget = null;
+                    state.scannerManualValue = '';
+                    render();
+                });
+                return;
+            }
+            state.showScanner = false;
+            state.scannerTarget = null;
+            state.scannerManualValue = '';
+            render();
+        }
+
+        window.closeScanner = closeScanner;
+        window.openScanner = (target) => {
+            state.showScanner = true;
+            state.scannerTarget = target;
+            state.scannerManualValue = '';
+            render();
+            setTimeout(startCamera, 120);
+        };
+        window.confirmManualScan = () => routeScanResult(state.scannerManualValue);
+
+        function render() {
+            syncBodyTheme();
+            const app = document.getElementById('app');
+            let html = '';
+            if (!state.user || state.view === 'login') {
+                html = renderLogin();
+            } else if (state.view === 'dashboard') {
+                html = renderDashboard();
+            } else if (state.view === 'move') {
+                html = renderMove();
+            } else if (state.view === 'tasks') {
+                html = renderTasks();
+            } else if (state.view === 'receive') {
+                html = renderReceive();
+            } else if (state.view === 'history') {
+                html = renderHistory();
+            }
+            app.innerHTML = html + renderScanner() + renderFlash();
+            lucide.createIcons();
+        }
+
+        render();
+    </script>
+</body>
+</html>
