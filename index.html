@@ -3,1133 +3,663 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Linde Warehouse OS</title>
-    
-    <!-- 1. Tailwind CSS -->
+    <title>WMS Mockup V1</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    
-    <!-- 2. Lucide Icons -->
     <script src="https://unpkg.com/lucide@latest"></script>
-    
-    <!-- 3. HTML5-QRCode Library -->
     <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
-
     <style>
         .no-scrollbar::-webkit-scrollbar { display: none; }
         .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
-        .glass-panel { transition: all 0.5s cubic-bezier(0.32, 0.72, 0, 1); }
-        .glass-panel:active { transform: scale(0.98); }
-
-        /* AANGEPASTE CSS: Header blijft nu zichtbaar */
-        .is-scrolled .header-profile { 
-            margin-bottom: 0.25rem; 
-            padding-top: 0.25rem;
-            padding-bottom: 0.25rem;
-        }
-        
-        .is-scrolled .header-logout { transform: scale(0.85); }
-        .is-scrolled .header-initials { transform: scale(0.85); }
-
-        /* KPI animaties (nog aanwezig voor eventueel toekomstig gebruik, maar niet actief) */
-        .kpi-expanded { opacity: 1; transform: translateY(0); transition: all 0.4s ease; pointer-events: auto; }
-        .kpi-compact { opacity: 0; transform: translateY(10px); transition: all 0.4s ease; pointer-events: none; position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; }
-
-        .is-scrolled .kpi-expanded { opacity: 0; transform: translateY(-10px); pointer-events: none; }
-        .is-scrolled .kpi-compact { opacity: 1; transform: translateY(0); pointer-events: auto; }
-        
         #reader video { object-fit: cover; width: 100% !important; height: 100% !important; border-radius: 1.5rem; }
-
-        /* Modal animatie */
-        .modal-enter { opacity: 0; transform: scale(0.95); }
-        .modal-enter-active { opacity: 1; transform: scale(1); transition: all 0.3s ease-out; }
     </style>
 </head>
-<body class="bg-[#050505] text-white h-screen w-screen overflow-hidden selection:bg-red-500/30 font-sans transition-colors duration-500" id="body-bg">
-    
-    <div class="fixed inset-0 overflow-hidden pointer-events-none">
-        <div id="bg-blob-1" class="absolute -top-[20%] -left-[10%] w-[70%] h-[50%] bg-red-600/20 rounded-full blur-[120px] animate-pulse mix-blend-screen transition-all duration-500"></div>
-        <div id="bg-blob-2" class="absolute top-[40%] -right-[10%] w-[60%] h-[60%] bg-blue-600/10 rounded-full blur-[120px] mix-blend-screen transition-all duration-500"></div>
+<body class="bg-[#050505] text-white h-screen w-screen overflow-hidden font-sans selection:bg-red-500/30">
+    <div class="fixed inset-0 pointer-events-none overflow-hidden">
+        <div class="absolute -top-[20%] -left-[10%] w-[70%] h-[50%] bg-red-600/20 rounded-full blur-[120px] animate-pulse mix-blend-screen"></div>
+        <div class="absolute top-[40%] -right-[10%] w-[60%] h-[60%] bg-blue-600/10 rounded-full blur-[120px] mix-blend-screen"></div>
     </div>
-
     <div id="app" class="relative z-10 h-full w-full max-w-md mx-auto"></div>
 
-    <script type="module">
-        import { getOrderLineCountsForOrder as deriveOrderLineCounts } from './orderLogic.js';
-        import { findMatchingAssets, findMatchingItems, findMatchingLocations, normalizeScanCode } from './scanUtils.js';
+    <script>
+        const STORAGE_KEY = 'wms_mockup_v1_state';
 
-        // --- 1. DATA & STATE ---
-        // Power Apps / Dataverse mapping (platte records, geen nested objecten):
-        // - Assets: serial (business key), deviceNumber, description, location, status, updatedAt
-        // - MoveRequests: id, serial (lookup naar Assets.serial), from, to, note, requestedBy, priority, status, createdAt, completedAt
-        // - MoveTransactions: id, type, serial (lookup naar Assets.serial), deviceNumber, from, to, operator, timestamp, note
-        // - Receipts: id, serial (lookup naar Assets.serial), deviceNumber, deliveryNoteNumber, externalDocumentNumber, dock, supplier, status, receivedAt
-        // Mapping-notitie: serial is in alle tabellen de primaire bedrijfsleutel en blijft overal zichtbaar in UI en logica.
-        // Let op: In een echte app zouden MOCK_ORDERS en de bijbehorende orderregels uit een database komen.
-        // Voor nu gebruiken we een mapping van mock orderregels en cachen we responses zodat elke order zijn eigen picklijst behoudt.
-        let MOCK_ORDERS = [
-            { id: 'ORD-2025-881', priority: 'high', createdAt: '2025-02-15T07:45:00Z', items: 4, totalItems: 4, type: 'replenishment', destination: 'WS-PACK-01', status: 'pending' },
-            { id: 'ORD-2025-882', priority: 'normal', createdAt: '2025-02-16T09:10:00Z', items: 14, totalItems: 14, type: 'outbound', destination: 'DOCK-04', status: 'pending' },
-            { id: 'ORD-2025-889', priority: 'low', createdAt: '2025-02-14T14:20:00Z', items: 1, totalItems: 1, type: 'internal', destination: 'LOC-Z-99', status: 'pending' },
-            { id: 'ORD-2025-890', priority: 'normal', createdAt: '2025-02-16T11:05:00Z', items: 8, totalItems: 8, destination: 'A-14-02', status: 'pending' },
-            { id: 'ORD-2025-891', priority: 'low', createdAt: '2025-02-16T06:35:00Z', items: 2, totalItems: 2, destination: 'B-02-11', status: 'pending' },
-            { id: 'ORD-2025-892', priority: 'normal', createdAt: '2025-02-15T17:30:00Z', items: 5, totalItems: 5, destination: 'C-12-01', status: 'pending' },
-            { id: 'ORD-2025-893', priority: 'low', createdAt: '2025-02-13T08:00:00Z', items: 1, totalItems: 1, destination: 'A-01-01', status: 'pending' },
-            { id: 'ORD-2025-894', priority: 'high', createdAt: '2025-02-16T05:50:00Z', items: 3, totalItems: 3, destination: 'B-11-05', status: 'pending' },
-        ];
-
-        let ARCHIVED_ORDERS = [];
-
-        const MOCK_ORDER_LINES = {
-            'ORD-2025-881': [
-                { id: 'SKU-9901', name: 'Hydrauliek Pomp V2', qty: 1, location: 'A-12-01', unit: 'st' },
-                { id: 'SKU-2210', name: 'Linde Remblok Set', qty: 5, location: 'B-04-01', unit: 'doos' },
-                { id: 'SKU-8812', name: 'O-Ring 12mm', qty: 100, location: 'Z-01-99', unit: 'zak' },
-                { id: 'TRUCK-99', name: 'E20 Chassis', qty: 1, location: 'PARK-01', unit: 'st' },
+        const DEFAULT_DB = {
+            assets: [
+                { serial: 'H2X386Y00010', device: 'DV-240015', description: 'Linde E20 Heftruck', location: 'C-LINKS', status: 'Beschikbaar', updatedAt: '2026-04-23T08:05:00Z' },
+                { serial: 'H2X386Y00011', device: 'DV-240016', description: 'Linde Xi10', location: 'W16', status: 'Op werkvloer', updatedAt: '2026-04-23T07:55:00Z' },
+                { serial: 'H2X386Y00012', device: 'DV-240017', description: 'Linde R14 Reachtruck', location: 'EXP-01', status: 'Beschikbaar', updatedAt: '2026-04-23T07:40:00Z' },
+                { serial: 'H2X386Y00013', device: 'DV-240018', description: 'Tennant T16', location: 'INK-01', status: 'Ontvangst', updatedAt: '2026-04-23T07:25:00Z' },
+                { serial: 'H2X386Y00014', device: 'DV-240019', description: 'Linde E35', location: 'C-RECHTS', status: 'Beschikbaar', updatedAt: '2026-04-23T07:10:00Z' }
             ],
-            'ORD-2025-882': [
-                { id: 'SKU-9902', name: 'Hydrauliek Pomp V3', qty: 2, location: 'A-12-02', unit: 'st' },
-                { id: 'SKU-8812', name: 'O-Ring 12mm', qty: 50, location: 'Z-01-99', unit: 'zak' },
-                { id: 'PAL-200', name: 'Europallet 120x80', qty: 10, location: 'DOCK-04', unit: 'stk' },
-                { id: 'BOX-10', name: 'Verzenddoos L', qty: 25, location: 'PK-02-01', unit: 'stk' },
-                { id: 'SKU-0092', name: 'Sensorpakket Pro', qty: 4, location: 'PK-02-009', unit: 'set' },
-                { id: 'SKU-0981', name: 'Kabelboom Compact', qty: 6, location: 'PK-02-010', unit: 'st' },
-                { id: 'LAB-550', name: 'Waarschuwingslabel', qty: 100, location: 'PK-01-01', unit: 'rol' },
-                { id: 'TAPE-77', name: 'Verpakkingstape 66m', qty: 30, location: 'PK-01-02', unit: 'rol' },
-                { id: 'FILM-02', name: 'Krimpfolie Transparant', qty: 12, location: 'PK-01-03', unit: 'pak' },
-                { id: 'FILL-09', name: 'Vulmateriaal Bio', qty: 3, location: 'PK-01-04', unit: 'zak' },
-                { id: 'STRAP-44', name: 'Omsnoeringsband 16mm', qty: 2, location: 'PK-03-02', unit: 'rol' },
-                { id: 'BUCK-44', name: 'Omsnoeringsgesp', qty: 200, location: 'PK-03-04', unit: 'st' },
-                { id: 'CART-33', name: 'Verzendkarren', qty: 2, location: 'DOCK-02', unit: 'st' },
-                { id: 'WRAP-88', name: 'Stretchwrap Machine Rol', qty: 4, location: 'DOCK-04', unit: 'rol' },
+            tasks: [
+                { id: 'REQ-1001', serial: 'H2X386Y00010', fromLocation: 'C-LINKS', toLocation: 'W16', requester: 'WVB', notes: 'Klaarzetten voor werkplaats 16', status: 'Open', createdAt: '2026-04-23T07:30:00Z' },
+                { id: 'REQ-1002', serial: 'H2X386Y00012', fromLocation: 'EXP-01', toLocation: 'DOCK-02', requester: 'EXP', notes: 'Transport gereedmaken', status: 'Open', createdAt: '2026-04-23T07:50:00Z' }
             ],
-            'ORD-2025-889': [
-                { id: 'BAT-778', name: 'Tractiebatterij 48V', qty: 1, location: 'BATT-01', unit: 'st' },
+            receipts: [
+                { id: 'RCV-9001', receiptNumber: 'PAK-77821', externalNumber: 'EXT-9901', serial: 'H2X386Y00013', device: 'DV-240018', location: 'INK-01', operator: 'SYS', createdAt: '2026-04-23T07:25:00Z' }
             ],
-            'ORD-2025-890': [
-                { id: 'OIL-19', name: 'Hydraulische olie 19L', qty: 4, location: 'OIL-02', unit: 'vat' },
-                { id: 'FORK-02', name: 'Vorkenset 1200mm', qty: 2, location: 'FORK-01', unit: 'set' },
-                { id: 'LIGHT-77', name: 'Werklamp LED', qty: 3, location: 'EL-09-03', unit: 'st' },
-                { id: 'CABLE-12', name: 'Laadkabel 5m', qty: 4, location: 'EL-02-01', unit: 'st' },
-                { id: 'HARN-44', name: 'Veiligheidsharnas', qty: 1, location: 'SAF-03', unit: 'st' },
-            ],
-            'ORD-2025-891': [
-                { id: 'FILTER-01', name: 'Luchtfilter set', qty: 2, location: 'FIL-01-01', unit: 'st' },
-                { id: 'BELT-90', name: 'V-snaar 900mm', qty: 1, location: 'DRIVE-04', unit: 'st' },
-            ],
-            'ORD-2025-892': [
-                { id: 'SEAL-22', name: 'Asafdichting 22mm', qty: 6, location: 'SEAL-02-02', unit: 'st' },
-                { id: 'GLV-10', name: 'Nitril handschoenen M', qty: 2, location: 'SAF-05-02', unit: 'doos' },
-                { id: 'BOLT-88', name: 'Bout M12', qty: 200, location: 'FAST-10', unit: 'st' },
-            ],
-            'ORD-2025-893': [
-                { id: 'CHARG-03', name: 'Lader 48V', qty: 1, location: 'CHRG-01', unit: 'st' },
-            ],
-            'ORD-2025-894': [
-                { id: 'TIRE-20', name: 'Volrubberband 20x8', qty: 2, location: 'TYR-04', unit: 'st' },
-                { id: 'BRAKE-12', name: 'Remcilinder set', qty: 1, location: 'BRK-02-01', unit: 'set' },
-                { id: 'MIR-03', name: 'Panoramische spiegel', qty: 1, location: 'CAB-07', unit: 'st' },
-            ],
+            history: [
+                { id: 'HIS-1', type: 'move', serial: 'H2X386Y00011', device: 'DV-240016', fromLocation: 'C-LINKS', toLocation: 'W16', operator: 'EXP', note: 'Werkplaats aanvraag', createdAt: '2026-04-23T07:55:00Z' },
+                { id: 'HIS-2', type: 'receipt', serial: 'H2X386Y00013', device: 'DV-240018', fromLocation: 'LEVERANCIER', toLocation: 'INK-01', operator: 'SYS', note: 'Ontvangen op pakbon PAK-77821', createdAt: '2026-04-23T07:25:00Z' }
+            ]
         };
 
-        const KNOWN_LOCATIONS = (() => {
-            const locations = new Set();
-            MOCK_ORDERS.forEach(order => {
-                if (order.destination) locations.add(order.destination);
-            });
-            Object.values(MOCK_ORDER_LINES).forEach(lines => {
-                lines.forEach(line => {
-                    if (line.location) locations.add(line.location);
-                });
-            });
-            return Array.from(locations).sort();
-        })();
-
-        const DEFAULT_ASSETS = [
-            { serial: 'H2X386Y00010', deviceNumber: 'TRK-204', description: 'Linde H20T heftruck', location: 'C-LINKS', status: 'available', updatedAt: '2026-04-23T07:12:00Z' },
-            { serial: 'H2X386Y00011', deviceNumber: 'TRK-209', description: 'Linde E16 elektrotruck', location: 'W16', status: 'moving', updatedAt: '2026-04-23T08:41:00Z' },
-            { serial: 'H2X386Y00012', deviceNumber: 'TRK-221', description: 'Orderpicker N20', location: 'EXP-01', status: 'loading', updatedAt: '2026-04-23T08:03:00Z' },
-            { serial: 'H2X386Y00013', deviceNumber: 'TRK-227', description: 'Reachtruck R14', location: 'INK-01', status: 'receiving', updatedAt: '2026-04-23T06:55:00Z' },
-            { serial: 'H2X386Y00014', deviceNumber: 'TRK-230', description: 'Pallettruck MT15', location: 'W16', status: 'maintenance', updatedAt: '2026-04-22T21:18:00Z' },
-        ];
-
-        const DEFAULT_MOVE_REQUESTS = [
-            { id: 'MOVE-260423-001', serial: 'H2X386Y00010', from: 'C-LINKS', to: 'EXP-01', note: 'Spoed voor outbound lane.', requestedBy: 'PLN', priority: 'high', status: 'open', createdAt: '2026-04-23T07:05:00Z', completedAt: null },
-            { id: 'MOVE-260423-002', serial: 'H2X386Y00011', from: 'W16', to: 'INK-01', note: 'Aanvoer naar inkomende controle.', requestedBy: 'RCV', priority: 'normal', status: 'open', createdAt: '2026-04-23T08:20:00Z', completedAt: null },
-            { id: 'MOVE-260423-003', serial: 'H2X386Y00013', from: 'INK-01', to: 'C-LINKS', note: 'Retour na kwaliteitscheck.', requestedBy: 'QCL', priority: 'normal', status: 'open', createdAt: '2026-04-23T06:50:00Z', completedAt: null },
-        ];
-
-        const DEFAULT_RECEIPTS = [
-            { id: 'RCV-260423-014', serial: 'H2X386Y00013', deviceNumber: 'TRK-227', deliveryNoteNumber: 'PKB-2026-1145', externalDocumentNumber: 'EXT-908771', dock: 'INK-01', supplier: 'Linde Parts Benelux', status: 'inbound', receivedAt: '2026-04-23T06:42:00Z' },
-            { id: 'RCV-260423-015', serial: 'H2X386Y00015', deviceNumber: 'TRK-245', deliveryNoteNumber: 'PKB-2026-1146', externalDocumentNumber: 'EXT-908772', dock: 'INK-02', supplier: 'Hydro Systems BV', status: 'quality-check', receivedAt: '2026-04-23T07:58:00Z' },
-        ];
-
-        const DEFAULT_MOVE_TRANSACTIONS = [
-            { id: 'LOG-9910', type: 'move', serial: 'H2X386Y00012', deviceNumber: 'TRK-221', from: 'W16', to: 'EXP-01', operator: 'JVD', timestamp: '2026-04-23T05:34:00Z', note: 'Verplaatsing bevestigd' },
-            { id: 'LOG-9911', type: 'receipt', serial: 'H2X386Y00010', deviceNumber: 'TRK-204', from: 'C-LINKS', to: 'INK-01', operator: 'MRT', timestamp: '2026-04-23T06:12:00Z', note: 'Asset gekoppeld aan dock' },
-            { id: 'LOG-9912', type: 'move', serial: 'H2X386Y00014', deviceNumber: 'TRK-230', from: 'W16', to: 'W16', operator: 'OPS', timestamp: '2026-04-22T21:18:00Z', note: 'Status gewijzigd naar maintenance' },
-        ];
-
-
-
-        const LOCAL_STORAGE_KEY = 'wms-v1-mockdata';
-
-        const cloneData = (value) => JSON.parse(JSON.stringify(value));
-        const loadPersistedWmsData = () => {
-            try {
-                const raw = localStorage.getItem(LOCAL_STORAGE_KEY);
-                if (!raw) return null;
-                const parsed = JSON.parse(raw);
-                return {
-                    assets: Array.isArray(parsed.assets) ? parsed.assets : null,
-                    moveRequests: Array.isArray(parsed.moveRequests) ? parsed.moveRequests : (Array.isArray(parsed.moves) ? parsed.moves : null),
-                    receipts: Array.isArray(parsed.receipts) ? parsed.receipts : null,
-                    moveTransactions: Array.isArray(parsed.moveTransactions) ? parsed.moveTransactions : (Array.isArray(parsed.history) ? parsed.history : null),
-                };
-            } catch (error) {
-                console.warn('Kon localStorage mockdata niet laden:', error);
-                return null;
-            }
-        };
-
-        const persistWmsData = () => {
-            try {
-                localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify({
-                    assets: ASSETS,
-                    moveRequests: MOVE_REQUESTS,
-                    receipts: RECEIPTS,
-                    moveTransactions: MOVE_TRANSACTIONS,
-                }));
-            } catch (error) {
-                console.warn('Kon localStorage mockdata niet opslaan:', error);
-            }
-        };
-
-        const persistedWmsData = loadPersistedWmsData();
-        let ASSETS = cloneData(persistedWmsData?.assets ?? DEFAULT_ASSETS);
-        let MOVE_REQUESTS = cloneData(persistedWmsData?.moveRequests ?? DEFAULT_MOVE_REQUESTS);
-        let RECEIPTS = cloneData(persistedWmsData?.receipts ?? DEFAULT_RECEIPTS);
-        let MOVE_TRANSACTIONS = cloneData(persistedWmsData?.moveTransactions ?? DEFAULT_MOVE_TRANSACTIONS);
-        if (!persistedWmsData) persistWmsData();
-
-        const resetWmsMockData = () => {
-            ASSETS = cloneData(DEFAULT_ASSETS);
-            MOVE_REQUESTS = cloneData(DEFAULT_MOVE_REQUESTS);
-            RECEIPTS = cloneData(DEFAULT_RECEIPTS);
-            MOVE_TRANSACTIONS = cloneData(DEFAULT_MOVE_TRANSACTIONS);
-            persistWmsData();
-        };
         let state = {
-            appMode: 'orderflow',
             view: 'login',
             user: null,
             darkMode: true,
-            activeOrder: null,
-            pickItems: [],
-            pickedItems: new Set(),
-            pickSearchTerm: '',
-            pickSortOption: 'default',
-            isLoadingOrderLines: false,
-            orderLineError: null,
-            scanStep: 0,
-            scannedData: { truck: '', location: '' },
-            scannerContext: null,
-            manualScanInput: '',
-            scanFeedback: null,
-            scannerOverlayFeedback: null,
-            loginInput: '',
+            flash: null,
             showScanner: false,
+            scannerTarget: null,
             html5QrCode: null,
-            sortOption: 'priority',
-            stats: {
-                picksPerHour: 38,
-                accuracy: 99.2,
-                totalPicksShift: 142
+            scannerManualValue: '',
+            activeTaskId: null,
+            forms: {
+                move: { serial: '', toLocation: '', note: '' },
+                task: { serial: '', fromLocation: '', toLocation: '', notes: '' },
+                receipt: { receiptNumber: '', externalNumber: '', serial: '', device: '', location: 'INK-01' }
             },
-            isEditingDestination: false,
-            newDestinationInput: '',
-            destinationSuggestions: [],
-            destinationError: null,
-            showConfirmationModal: false, // NIEUW: Voor de pick bevestiging
-            // Initialisatieflags
-            initialOrderLinesLoaded: false,
-            isLoadingInitialOrderLines: false,
-            orderLineMap: {},
-            orderLineState: {},
-            wmsView: 'dashboard',
-            moveSearchInput: '',
-            moveDestinationInput: '',
-            moveSelectedAssetSerial: '',
-            moveFeedback: null,
-            wmsScanInput: '',
-            wmsScanFeedback: null,
-            taskForm: {
-                serial: '',
-                from: '',
-                to: '',
-                note: '',
-                requestedBy: '',
-            },
-            receiveForm: {
-                deliveryNoteNumber: '',
-                externalDocumentNumber: '',
-                serial: '',
-                deviceNumber: '',
-                location: '',
-            },
-            activeMoveTaskId: null,
+            db: loadDb()
         };
 
-        // --- 2. STATE MANAGEMENT ---
-        function setState(updates) {
-            if ('pickItems' in updates || 'pickSearchTerm' in updates || 'pickSortOption' in updates) {
-                pickListCache = { key: '', items: [], source: null };
+        function loadDb() {
+            try {
+                const stored = JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null');
+                if (!stored) return structuredClone(DEFAULT_DB);
+                return {
+                    assets: Array.isArray(stored.assets) ? stored.assets : structuredClone(DEFAULT_DB.assets),
+                    tasks: Array.isArray(stored.tasks) ? stored.tasks : structuredClone(DEFAULT_DB.tasks),
+                    receipts: Array.isArray(stored.receipts) ? stored.receipts : structuredClone(DEFAULT_DB.receipts),
+                    history: Array.isArray(stored.history) ? stored.history : structuredClone(DEFAULT_DB.history)
+                };
+            } catch (error) {
+                return structuredClone(DEFAULT_DB);
             }
+        }
+
+        function persistDb() {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(state.db));
+        }
+
+        function normalizeCode(value) {
+            return String(value || '').trim().replace(/\s+/g, '').toUpperCase();
+        }
+
+        function setState(updates) {
             state = { ...state, ...updates };
+            persistDb();
             render();
         }
 
-        // --- 3. UI COMPONENTS ---
-        const getTheme = () => ({
-            bgMain: state.darkMode ? 'bg-[#050505]' : 'bg-[#f0f4f8]',
-            textMain: state.darkMode ? 'text-white' : 'text-slate-900',
-            textSec: state.darkMode ? 'text-white/50' : 'text-slate-500',
-            glass: state.darkMode
-                ? 'bg-white/10 border-white/20 shadow-[0_8px_32px_0_rgba(0,0,0,0.37)]'
-                : 'bg-white/80 border-slate-200/60 shadow-[0_4px_24px_0_rgba(100,116,139,0.15)]',
-            navGlass: state.darkMode ? 'bg-white/5 border-white/10' : 'bg-white/60 border-slate-200/60'
-        });
-        const getOpenMoveTasks = () => MOVE_REQUESTS.filter(task => task.status === 'open');
-        const getSortedHistoryEntries = () =>
-            [...MOVE_TRANSACTIONS].sort((a, b) => new Date(b.timestamp || b.loggedAt || 0) - new Date(a.timestamp || a.loggedAt || 0));
-
-        function syncBodyTheme(darkMode = state.darkMode) {
-            const b = document.body;
-            b.classList.remove('bg-[#050505]', 'text-white', 'bg-[#f0f4f8]', 'text-slate-900');
-            if (darkMode) {
-                b.classList.add('bg-[#050505]', 'text-white');
-            } else {
-                b.classList.add('bg-[#f0f4f8]', 'text-slate-900');
-            }
+        function setFlash(message, variant = 'success') {
+            state.flash = { message, variant };
+            render();
+            setTimeout(() => {
+                if (state.flash?.message === message) {
+                    state.flash = null;
+                    render();
+                }
+            }, 2200);
         }
 
-        const GlassCard = (content, onClick = null, extraClasses = '') => {
+        function getTheme() {
+            return {
+                bg: state.darkMode ? 'bg-[#050505]' : 'bg-[#f3f6fb]',
+                textMain: state.darkMode ? 'text-white' : 'text-slate-900',
+                textSec: state.darkMode ? 'text-white/60' : 'text-slate-500',
+                glass: state.darkMode
+                    ? 'bg-white/10 border-white/15 shadow-[0_8px_32px_0_rgba(0,0,0,0.35)]'
+                    : 'bg-white/80 border-slate-200 shadow-[0_8px_32px_0_rgba(148,163,184,0.18)]',
+                chip: state.darkMode ? 'bg-white/10 border-white/15' : 'bg-slate-100 border-slate-200',
+                input: state.darkMode ? 'border-white/15 bg-white/5 text-white placeholder:text-white/30' : 'border-slate-200 bg-white text-slate-900 placeholder:text-slate-400',
+                nav: state.darkMode ? 'bg-white/5 border-white/10' : 'bg-white/70 border-slate-200'
+            };
+        }
+
+        function syncBodyTheme() {
+            const body = document.body;
+            body.className = `${state.darkMode ? 'bg-[#050505] text-white' : 'bg-[#f3f6fb] text-slate-900'} h-screen w-screen overflow-hidden font-sans selection:bg-red-500/30`;
+        }
+
+        function GlassCard(content, extraClasses = '') {
             const t = getTheme();
-            const clickAttr = onClick ? `onclick="${onClick}"` : '';
-            const cursor = onClick ? 'cursor-pointer' : '';
             return `
-                <div ${clickAttr} class="glass-panel relative overflow-hidden backdrop-blur-xl border rounded-2xl ${t.glass} ${cursor} ${extraClasses}">
+                <div class="relative overflow-hidden rounded-2xl border backdrop-blur-xl ${t.glass} ${extraClasses}">
                     <div class="absolute inset-0 pointer-events-none bg-gradient-to-br ${state.darkMode ? 'from-white/10' : 'from-white/60'} to-transparent"></div>
-                    <div class="relative z-10 w-full h-full p-3"> <!-- Padding verlaagd van p-5 naar p-3 -->
-                        ${content}
-                    </div>
+                    <div class="relative z-10 p-4">${content}</div>
                 </div>
             `;
-        };
-
-        const priorityStyles = {
-            high: { label: 'Urgent', chip: 'bg-red-500/15 text-red-200 border border-red-500/30', icon: 'bg-red-500/20 text-red-500' },
-            normal: { label: 'Standaard', chip: 'bg-blue-500/15 text-blue-200 border border-blue-500/30', icon: 'bg-blue-500/20 text-blue-500' },
-            low: { label: 'Laag', chip: 'bg-amber-500/15 text-amber-200 border border-amber-500/30', icon: 'bg-amber-500/20 text-amber-500' },
-        };
-
-        const statusStyles = {
-            pending: { label: 'Open', chip: 'bg-white/10 text-white/80 border border-white/20' },
-            partial: { label: 'Gedeeltelijk', chip: 'bg-yellow-500/15 text-yellow-200 border border-yellow-500/30' },
-            completed: { label: 'Voltooid', chip: 'bg-emerald-500/15 text-emerald-200 border border-emerald-500/30' },
-        };
-
-        const priorityRank = { high: 0, normal: 1, low: 2 };
-
-        const sortPickItems = (items, option = 'default') => {
-            if (option === 'default') return items;
-
-            const sorted = [...items];
-            switch (option) {
-                case 'name':
-                    sorted.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
-                    break;
-                case 'location':
-                    sorted.sort((a, b) => (a.location || '').localeCompare(b.location || ''));
-                    break;
-                case 'sku':
-                    sorted.sort((a, b) => (a.id || '').localeCompare(b.id || ''));
-                    break;
-            }
-            return sorted;
-        };
-
-        const prepareOrderLines = (lines = []) =>
-            lines.map((line) => ({
-                ...line,
-                searchIndex: `${line.name || ''} ${line.id || ''} ${line.location || ''}`.toLowerCase(),
-            }));
-
-        let pickListCache = { key: '', items: [], source: null };
-
-        const getFilteredPickItems = () => {
-            const sourceItems = Array.isArray(state.pickItems) ? state.pickItems : [];
-            const searchTerm = (state.pickSearchTerm || '').trim().toLowerCase();
-            const cacheKey = `${state.pickSortOption}|${searchTerm}|${sourceItems.length}`;
-
-            if (pickListCache.key === cacheKey && pickListCache.source === sourceItems) {
-                return pickListCache.items;
-            }
-
-            const filteredItems = searchTerm
-                ? sourceItems.filter((item) => (item.searchIndex || '').includes(searchTerm))
-                : sourceItems;
-
-            const sortedItems = sortPickItems(filteredItems, state.pickSortOption);
-            pickListCache = { key: cacheKey, items: sortedItems, source: sourceItems };
-            return sortedItems;
-        };
-
-        const sortOrders = (orders) => {
-            const sorted = [...orders];
-            sorted.sort((a, b) => {
-                if (state.sortOption === 'destination') {
-                    const destA = (a.destination || '').localeCompare(b.destination || '');
-                    return destA;
-                }
-                if (state.sortOption === 'createdAt') {
-                    return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
-                }
-                return (priorityRank[a.priority] ?? 99) - (priorityRank[b.priority] ?? 99);
-            });
-            return sorted;
-        };
-
-        async function fetchOrderLines(orderId) {
-            const endpoint = `/api/orders/${orderId}/lines`;
-
-            try {
-                const response = await fetch(endpoint, { cache: 'no-store' });
-
-                if (response.ok) {
-                    const data = await response.json();
-                    if (Array.isArray(data) && data.length > 0) {
-                        return data;
-                    }
-                }
-
-                throw new Error('Geen orderregels gevonden in backend respons.');
-            } catch (error) {
-                console.warn('Orderregels ophalen mislukt, val terug op mock data.', error);
-
-                const cachedLines = state.orderLineMap?.[orderId];
-
-                if (cachedLines) {
-                    return cachedLines;
-                }
-
-                if (MOCK_ORDER_LINES[orderId]) {
-                    return MOCK_ORDER_LINES[orderId];
-                }
-
-                throw new Error('Geen orderregels gevonden voor deze order.');
-            }
         }
 
-        async function loadOrderLines(orderId) {
-            setState({
-                isLoadingOrderLines: true,
-                orderLineError: null,
-                pickItems: [],
-                pickedItems: new Set(),
-                scanFeedback: null
-            });
-
-            try {
-                const lines = prepareOrderLines(await fetchOrderLines(orderId));
-
-                const orderIndex = MOCK_ORDERS.findIndex(o => o.id === orderId);
-                const updatedOrder = orderIndex !== -1
-                    ? MOCK_ORDERS[orderIndex]
-                    : (state.activeOrder && state.activeOrder.id === orderId
-                        ? state.activeOrder
-                        : state.activeOrder);
-
-                const updatedOrderLineState = {
-                    ...state.orderLineState,
-                    [orderId]: {
-                        totalLines: lines.length,
-                        remainingLines: state.orderLineState[orderId]?.remainingLines ?? lines.length,
-                    }
-                };
-
-                setState({
-                    pickItems: lines,
-                    isLoadingOrderLines: false,
-                    activeOrder: updatedOrder,
-                    orderLineMap: { ...state.orderLineMap, [orderId]: lines },
-                    orderLineState: updatedOrderLineState,
-                });
-            } catch (error) {
-                setState({
-                    isLoadingOrderLines: false,
-                    orderLineError: error.message || 'Geen orderregels gevonden voor deze order.',
-                    pickItems: [],
-                });
-            }
+        function Button(label, onClick, variant = 'primary', icon = '') {
+            const variants = {
+                primary: 'bg-red-600 text-white border-red-500 hover:bg-red-500',
+                secondary: state.darkMode ? 'bg-white/10 text-white border-white/15 hover:bg-white/15' : 'bg-white text-slate-900 border-slate-200 hover:bg-slate-50',
+                success: 'bg-emerald-600 text-white border-emerald-500 hover:bg-emerald-500'
+            };
+            return `
+                <button onclick="${onClick}" class="w-full px-4 py-3 rounded-xl border font-semibold flex items-center justify-center gap-2 transition-all active:scale-95 ${variants[variant]}">
+                    ${icon ? `<i data-lucide="${icon}" width="18"></i>` : ''}
+                    <span>${label}</span>
+                </button>
+            `;
         }
 
-        const getOrderLineCountsForOrder = (order) => deriveOrderLineCounts(order, state.orderLineState, state.orderLineMap);
+        function nowIso() {
+            return new Date().toISOString();
+        }
 
-        async function initializeOrderLineCounts() {
-            if (state.isLoadingInitialOrderLines || state.initialOrderLinesLoaded) {
+        function makeId(prefix) {
+            return `${prefix}-${Math.floor(Math.random() * 9000) + 1000}`;
+        }
+
+        function formatDateTime(value) {
+            return new Date(value).toLocaleString('nl-NL', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+        }
+
+        function getAssetByCode(code) {
+            const normalized = normalizeCode(code);
+            return state.db.assets.find(asset => normalizeCode(asset.serial) === normalized || normalizeCode(asset.device) === normalized) || null;
+        }
+
+        function getAssetBySerial(serial) {
+            return state.db.assets.find(asset => normalizeCode(asset.serial) === normalizeCode(serial)) || null;
+        }
+
+        function getOpenTasks() {
+            return state.db.tasks.filter(task => task.status === 'Open');
+        }
+
+        function getStats() {
+            return {
+                assets: state.db.assets.length,
+                openTasks: getOpenTasks().length,
+                receiptsToday: state.db.receipts.length,
+                movesToday: state.db.history.filter(item => item.type === 'move').length
+            };
+        }
+
+        function updateForm(section, field, value) {
+            state.forms = {
+                ...state.forms,
+                [section]: {
+                    ...state.forms[section],
+                    [field]: value
+                }
+            };
+            render();
+        }
+
+        function moveAsset({ serial, toLocation, note = '', source = 'Direct', linkedTaskId = null }) {
+            const asset = getAssetBySerial(serial);
+            if (!asset) {
+                setFlash('Serienummer niet gevonden.', 'warning');
                 return;
             }
 
-            setState({ isLoadingInitialOrderLines: true });
-
-            try {
-                const initializedOrderLineMap = { ...state.orderLineMap };
-                const initializedOrderLineState = { ...state.orderLineState };
-
-                await Promise.all(MOCK_ORDERS.map(async (order) => {
-                    try {
-                        const lines = prepareOrderLines(await fetchOrderLines(order.id));
-                        initializedOrderLineMap[order.id] = lines;
-                        initializedOrderLineState[order.id] = {
-                            totalLines: lines.length,
-                            remainingLines: initializedOrderLineState[order.id]?.remainingLines ?? lines.length,
-                        };
-                    } catch (error) {
-                        console.warn(`Initialiseren van orderregels mislukt voor ${order.id}`, error);
-                    }
-                }));
-
-                setState({
-                    initialOrderLinesLoaded: true,
-                    orderLineMap: initializedOrderLineMap,
-                    orderLineState: initializedOrderLineState,
-                });
-            } finally {
-                setState({ isLoadingInitialOrderLines: false });
+            const destination = normalizeCode(toLocation);
+            if (!destination) {
+                setFlash('Doellocatie ontbreekt.', 'warning');
+                return;
             }
+
+            const fromLocation = asset.location;
+            asset.location = destination;
+            asset.status = destination.startsWith('W') ? 'Op werkvloer' : 'Beschikbaar';
+            asset.updatedAt = nowIso();
+
+            state.db.history.unshift({
+                id: makeId('HIS'),
+                type: 'move',
+                serial: asset.serial,
+                device: asset.device,
+                fromLocation,
+                toLocation: destination,
+                operator: state.user.initials,
+                note: note || source,
+                createdAt: nowIso()
+            });
+
+            if (linkedTaskId) {
+                const task = state.db.tasks.find(item => item.id === linkedTaskId);
+                if (task) task.status = 'Voltooid';
+            }
+
+            state.forms.move = { serial: '', toLocation: '', note: '' };
+            state.activeTaskId = null;
+            setState({ db: state.db, forms: state.forms, activeTaskId: state.activeTaskId });
+            setFlash(`Machine ${asset.serial} verplaatst naar ${destination}.`);
         }
 
-        const Button = (label, onClick, variant = 'primary', icon = '', disabled = false) => {
-            const variants = {
-                primary: "bg-red-600 text-white shadow-lg shadow-red-900/20 border-red-500 hover:bg-red-500",
-                secondary: "bg-white/10 text-current border-white/10 hover:bg-white/20",
-                success: "bg-emerald-600 text-white shadow-lg shadow-emerald-900/20 border-emerald-500 hover:bg-emerald-500",
-            };
-            const disabledClass = disabled ? 'opacity-50 grayscale pointer-events-none' : '';
-            return `
-                <button onclick="${onClick}" class="w-full py-3 px-4 rounded-xl font-semibold tracking-wide backdrop-blur-md border flex items-center justify-center gap-2 transition-all active:scale-95 ${variants[variant]} ${disabledClass}">
-                    ${icon ? `<i data-lucide="${icon}" width="20" height="20"></i>` : ''}
-                    ${label}
-                </button>
-            `;
-        };
+        function receiveAsset() {
+            const form = state.forms.receipt;
+            const serial = normalizeCode(form.serial);
+            const device = normalizeCode(form.device);
+            const location = normalizeCode(form.location);
+            const receiptNumber = normalizeCode(form.receiptNumber);
+            const externalNumber = normalizeCode(form.externalNumber);
 
-        // --- 4. VIEW RENDERERS ---
+            if (!serial || !device || !location || !receiptNumber || !externalNumber) {
+                setFlash('Vul pakbon, extern nummer, serienummer, devicenummer en locatie in.', 'warning');
+                return;
+            }
+
+            let asset = getAssetBySerial(serial);
+            const isNew = !asset;
+
+            if (!asset) {
+                asset = {
+                    serial,
+                    device,
+                    description: 'Nieuw ontvangen machine',
+                    location,
+                    status: 'Ontvangst',
+                    updatedAt: nowIso()
+                };
+                state.db.assets.unshift(asset);
+            } else {
+                asset.device = device;
+                asset.location = location;
+                asset.status = 'Ontvangst';
+                asset.updatedAt = nowIso();
+            }
+
+            state.db.receipts.unshift({
+                id: makeId('RCV'),
+                receiptNumber,
+                externalNumber,
+                serial,
+                device,
+                location,
+                operator: state.user.initials,
+                createdAt: nowIso()
+            });
+
+            state.db.history.unshift({
+                id: makeId('HIS'),
+                type: 'receipt',
+                serial,
+                device,
+                fromLocation: isNew ? 'LEVERANCIER' : 'ONBEKEND',
+                toLocation: location,
+                operator: state.user.initials,
+                note: `Ontvangst ${receiptNumber} / ${externalNumber}`,
+                createdAt: nowIso()
+            });
+
+            state.forms.receipt = { receiptNumber: '', externalNumber: '', serial: '', device: '', location: 'INK-01' };
+            setState({ db: state.db, forms: state.forms });
+            setFlash(`Ontvangst opgeslagen voor ${serial}.`);
+        }
+
+        function createTask() {
+            const form = state.forms.task;
+            const serial = normalizeCode(form.serial);
+            const fromLocation = normalizeCode(form.fromLocation);
+            const toLocation = normalizeCode(form.toLocation);
+            const notes = (form.notes || '').trim();
+
+            if (!serial || !fromLocation || !toLocation) {
+                setFlash('Vul serienummer, van-locatie en naar-locatie in.', 'warning');
+                return;
+            }
+
+            state.db.tasks.unshift({
+                id: makeId('REQ'),
+                serial,
+                fromLocation,
+                toLocation,
+                requester: state.user.initials,
+                notes,
+                status: 'Open',
+                createdAt: nowIso()
+            });
+
+            state.forms.task = { serial: '', fromLocation: '', toLocation: '', notes: '' };
+            setState({ db: state.db, forms: state.forms });
+            setFlash(`Opdracht aangemaakt voor ${serial}.`);
+        }
+
+        function useTask(taskId) {
+            const task = state.db.tasks.find(item => item.id === taskId);
+            if (!task) return;
+            state.forms.move = {
+                serial: task.serial,
+                toLocation: task.toLocation,
+                note: `Opdracht ${task.id} - ${task.notes || 'Geen opmerking'}`
+            };
+            state.activeTaskId = task.id;
+            setState({ forms: state.forms, activeTaskId: task.id, view: 'move' });
+        }
+
+        function resetMockData() {
+            state.db = structuredClone(DEFAULT_DB);
+            state.forms = {
+                move: { serial: '', toLocation: '', note: '' },
+                task: { serial: '', fromLocation: '', toLocation: '', notes: '' },
+                receipt: { receiptNumber: '', externalNumber: '', serial: '', device: '', location: 'INK-01' }
+            };
+            state.activeTaskId = null;
+            setState({ db: state.db, forms: state.forms, activeTaskId: null });
+            setFlash('Mockupdata is teruggezet.');
+        }
 
         function renderLogin() {
             const t = getTheme();
-            const loginLength = state.loginInput.length;
-            const hasLoginValue = loginLength > 0;
-            const isLoginValid = loginLength >= 2 && loginLength <= 4;
             return `
                 <div class="h-full flex flex-col items-center justify-center p-6">
                     <div class="mb-8 relative">
                         <div class="absolute inset-0 bg-red-500 blur-3xl opacity-20 rounded-full animate-pulse"></div>
                         <div class="w-20 h-20 rounded-2xl flex items-center justify-center ${state.darkMode ? 'bg-white/10 border border-white/20' : 'bg-white border border-slate-200 shadow-xl'}">
-                            <i data-lucide="truck" class="text-red-600" width="40" height="40"></i>
+                            <i data-lucide="scan-line" class="text-red-500" width="40" height="40"></i>
                         </div>
                     </div>
-                    <h1 class="text-2xl font-bold mb-2 ${t.textMain}">Warehouse OS</h1>
-                    <p class="text-sm mb-6 ${t.textSec}">Voer uw initialen in om te starten</p>
+                    <h1 class="text-2xl font-bold mb-2 ${t.textMain}">WMS Mockup V1</h1>
+                    <p class="text-sm mb-6 text-center ${t.textSec}">Mockup voor expeditie: verplaatsen, opdrachten en goederenontvangst.</p>
                     ${GlassCard(`
-                        <div class="flex flex-col gap-3">
-                            <div class="grid grid-cols-2 gap-2 mb-1">
-                                <button onclick="setAppMode('orderflow')" class="py-2 px-3 rounded-xl text-xs font-semibold border transition-colors ${state.appMode === 'orderflow' ? 'bg-red-600 text-white border-red-500' : `${state.darkMode ? 'bg-white/5 text-white/70 border-white/15 hover:bg-white/10' : 'bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200'}`}">Orderflow (legacy)</button>
-                                <button onclick="setAppMode('wms-v1')" class="py-2 px-3 rounded-xl text-xs font-semibold border transition-colors ${state.appMode === 'wms-v1' ? 'bg-red-600 text-white border-red-500' : `${state.darkMode ? 'bg-white/5 text-white/70 border-white/15 hover:bg-white/10' : 'bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200'}`}">WMS v1</button>
-                            </div>
-                            <label class="text-xs uppercase tracking-widest font-bold ${state.darkMode ? 'text-white/60' : 'text-slate-600'}">Operator ID</label>
-                            <input type="text" value="${state.loginInput}" oninput="handleInput(this.value)" placeholder="EXP" maxlength="4"
-                                class="w-full bg-transparent text-center text-4xl font-mono font-bold outline-none border-b-2 py-3 tracking-[0.5em] uppercase placeholder:opacity-20 transition-colors ${state.darkMode ? 'text-white border-white/20 focus:border-red-500' : 'text-slate-900 border-slate-300 focus:border-red-500'}"
-                            />
-                            <p class="text-xs ${hasLoginValue && !isLoginValid ? 'text-amber-300' : t.textSec}">
-                                Gebruik 2 t/m 4 letters (bijv. EXP, MK, WVB).
-                            </p>
-                            ${Button('Start Shift', 'handleLogin()', 'primary', 'arrow-right', !isLoginValid)}
+                        <div class="flex flex-col gap-4">
+                            <label class="text-xs uppercase tracking-widest font-bold ${t.textSec}">Initialen medewerker</label>
+                            <input type="text" value="${state.user?.initials || ''}" oninput="window.handleInitials(this.value)" placeholder="EXP" maxlength="4" class="w-full bg-transparent text-center text-4xl font-mono font-bold outline-none border-b-2 py-3 tracking-[0.4em] uppercase placeholder:opacity-20 ${state.darkMode ? 'text-white border-white/20 focus:border-red-500' : 'text-slate-900 border-slate-300 focus:border-red-500'}" />
+                            <p class="text-xs ${t.textSec}">Gebruik 2 tot 4 letters. Auth komt later in Power Apps.</p>
+                            ${Button('Start mockup', 'window.login()', 'primary', 'arrow-right')}
                         </div>
                     `)}
                 </div>
             `;
         }
 
-        function renderWmsShell() {
-            const t = getTheme();
-            const labels = {
-                dashboard: { title: 'WMS Dashboard', subtitle: 'Realtime overzicht van warehouse-operaties', icon: 'layout-dashboard' },
-                move: { title: 'Move', subtitle: 'Interne verplaatsingen tussen locaties', icon: 'move-right' },
-                tasks: { title: 'Tasks', subtitle: 'Toegewezen taken en prioriteiten', icon: 'list-checks' },
-                receive: { title: 'Receive', subtitle: 'Inkomende goederen verwerken', icon: 'inbox' },
-                history: { title: 'History', subtitle: 'Historische transacties en logs', icon: 'history' },
-                login: { title: 'WMS Login', subtitle: 'Authenticatie en sessiebeheer', icon: 'shield-check' },
-            };
-            const active = labels[state.wmsView] || labels.dashboard;
-
-            return `
-                <div class="h-full flex flex-col px-4 pt-4 pb-2 overflow-hidden">
-                    <div class="flex items-center justify-between gap-3 mb-3">
-                        <div>
-                            <p class="${t.textSec} text-[10px] uppercase tracking-[0.2em] font-semibold">WMS v1 mode</p>
-                            <h1 class="${t.textMain} text-lg font-bold">${active.title}</h1>
-                            <p class="${t.textSec} text-xs mt-0.5">Operator: <span class="font-mono font-semibold ${t.textMain}">${state.user?.initials || 'N/B'}</span></p>
-                        </div>
-                        <div class="flex items-center gap-2">
-                            <button onclick="resetDemoData()" class="px-2 py-1 rounded-lg border text-[10px] font-semibold uppercase tracking-wide ${state.darkMode ? 'border-amber-500/40 bg-amber-500/10 text-amber-200 hover:bg-amber-500/20' : 'border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100'}">
-                                Reset demo
-                            </button>
-                            <button onclick="logout()" class="p-2 rounded-full ${state.darkMode ? 'bg-white/5 hover:bg-white/10' : 'bg-white/60 hover:bg-white/80'}">
-                                <i data-lucide="log-out" class="text-red-500" width="20"></i>
-                            </button>
-                        </div>
-                    </div>
-                    ${GlassCard(`
-                        <div class="flex items-start gap-3">
-                            <div class="w-10 h-10 rounded-xl flex items-center justify-center ${state.darkMode ? 'bg-white/10 text-red-400' : 'bg-slate-100 text-red-500'}">
-                                <i data-lucide="${active.icon}" width="18"></i>
-                            </div>
-                            <div class="min-w-0">
-                                <h2 class="${t.textMain} font-semibold text-base">${active.title}</h2>
-                                <p class="${t.textSec} text-sm">${active.subtitle}</p>
-                            </div>
-                        </div>
-                    `, null, 'mb-3')}
-                    ${GlassCard(`
-                        ${renderWmsContent()}
-                    `, null, 'flex-1')}
-                    ${renderWmsNav()}
-                </div>
-            `;
-        }
-
-        function renderWmsContent() {
-            const t = getTheme();
-            if (state.wmsView === 'dashboard') {
-                return `
-                    <p class="${t.textSec} text-xs uppercase tracking-widest mb-2">Assets / Machines</p>
-                    <div class="space-y-2 max-h-[44vh] overflow-y-auto no-scrollbar pr-1">
-                        ${ASSETS.map(asset => `
-                            <div class="p-3 rounded-xl border ${state.darkMode ? 'border-white/10 bg-white/5' : 'border-slate-200 bg-white'}">
-                                <div class="flex items-center justify-between gap-2">
-                                    <p class="${t.textMain} text-sm font-semibold">${asset.deviceNumber}</p>
-                                    <span class="text-[10px] px-2 py-0.5 rounded-full ${state.darkMode ? 'bg-white/10 text-white/70' : 'bg-slate-100 text-slate-600'}">${asset.status}</span>
-                                </div>
-                                <p class="${t.textSec} text-xs font-mono">${asset.serial}</p>
-                                <p class="${t.textSec} text-xs mt-1">${asset.description}</p>
-                                <p class="${t.textMain} text-xs mt-2">Actuele locatie: <span class="font-mono text-red-400">${asset.location}</span></p>
-                                <p class="${t.textSec} text-[10px] mt-1">Bijgewerkt: ${new Date(asset.updatedAt).toLocaleString('nl-NL', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</p>
-                            </div>
-                        `).join('')}
-                    </div>
-                `;
-            }
-
-            if (state.wmsView === 'move') {
-                const selectedAsset = ASSETS.find(asset => asset.serial === state.moveSelectedAssetSerial);
-                const canConfirmMove = Boolean(selectedAsset && state.moveDestinationInput.trim());
-                return `
-                    <p class="${t.textSec} text-xs uppercase tracking-widest mb-2">Machine verplaatsen</p>
-                    <div class="space-y-3">
-                        <div class="p-3 rounded-xl border ${state.darkMode ? 'border-white/10 bg-white/5' : 'border-slate-200 bg-white'}">
-                            <p class="${t.textSec} text-[10px] uppercase tracking-widest mb-1">Stap 1 · Serienummer / device</p>
-                            <div class="flex gap-2">
-                                <input type="text" value="${state.moveSearchInput}" oninput="setMoveSearchInput(this.value)" placeholder="Scan of typ bijv. H2X386Y00010"
-                                    class="w-full bg-transparent border rounded-xl px-3 py-2 text-sm font-mono outline-none ${state.darkMode ? 'border-white/20 text-white placeholder:text-white/30 focus:border-red-400' : 'border-slate-300 text-slate-900 placeholder:text-slate-400 focus:border-red-500'}"
-                                />
-                                <button onclick="openScanner('move-serial')" class="px-3 rounded-xl border text-xs font-semibold ${state.darkMode ? 'border-white/20 bg-white/10 hover:bg-white/15' : 'border-slate-300 bg-slate-100 hover:bg-slate-200'}"><i data-lucide="camera" width="14"></i></button>
-                                <button onclick="lookupMoveAsset()" class="px-3 rounded-xl border text-xs font-semibold ${state.darkMode ? 'border-white/20 bg-white/10 hover:bg-white/15' : 'border-slate-300 bg-slate-100 hover:bg-slate-200'}">Zoek</button>
-                            </div>
-                            <p class="${t.textSec} text-[11px] mt-2">Serienummer is leidend; device-nummer is fallback.</p>
-                            <p class="${t.textSec} text-[11px]">Tip: scan een locatiecode om doellocatie automatisch te vullen.</p>
-                        </div>
-
-                        <div class="p-3 rounded-xl border ${selectedAsset ? 'border-emerald-500/40 bg-emerald-500/10' : `${state.darkMode ? 'border-white/10 bg-white/5' : 'border-slate-200 bg-white'}`}">
-                            <p class="${t.textSec} text-[10px] uppercase tracking-widest mb-1">Stap 2 · Huidige locatie</p>
-                            ${selectedAsset ? `
-                                <p class="${t.textMain} text-sm font-semibold">${selectedAsset.deviceNumber} · ${selectedAsset.description}</p>
-                                <p class="${t.textSec} text-xs font-mono">${selectedAsset.serial}</p>
-                                <p class="${t.textMain} text-sm mt-2">Huidige locatie: <span class="font-mono text-red-400">${selectedAsset.location}</span></p>
-                            ` : `<p class="${t.textSec} text-sm">Nog geen asset geselecteerd.</p>`}
-                        </div>
-
-                        <div class="p-3 rounded-xl border ${state.darkMode ? 'border-white/10 bg-white/5' : 'border-slate-200 bg-white'}">
-                            <p class="${t.textSec} text-[10px] uppercase tracking-widest mb-1">Stap 3 · Doellocatie</p>
-                            <input type="text" value="${state.moveDestinationInput}" oninput="setMoveDestinationInput(this.value)" placeholder="Scan of typ locatie (bijv. W16)"
-                                class="w-full bg-transparent border rounded-xl px-3 py-2 text-sm font-mono outline-none ${state.darkMode ? 'border-white/20 text-white placeholder:text-white/30 focus:border-red-400' : 'border-slate-300 text-slate-900 placeholder:text-slate-400 focus:border-red-500'}"
-                            />
-                            <button onclick="openScanner('move-location')" class="mt-2 w-full px-3 py-2 rounded-xl border text-xs font-semibold ${state.darkMode ? 'border-white/20 bg-white/10 hover:bg-white/15' : 'border-slate-300 bg-slate-100 hover:bg-slate-200'}">Scan locatie</button>
-                        </div>
-
-                        ${Button('Bevestig verplaatsing', 'confirmMoveAsset()', 'success', 'check-circle', !canConfirmMove)}
-
-                        ${state.moveFeedback ? `
-                            <div class="p-3 rounded-xl border ${state.moveFeedback.status === 'success' ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-300' : 'border-amber-500/40 bg-amber-500/10 text-amber-200'} text-xs">
-                                ${state.moveFeedback.message}
-                            </div>
-                        ` : ''}
-                    </div>
-                `;
-            }
-
-            if (state.wmsView === 'tasks') {
-                const openTasks = getOpenMoveTasks();
-                return `
-                    <p class="${t.textSec} text-xs uppercase tracking-widest mb-2">Open opdrachten</p>
-                    <div class="p-3 rounded-xl border ${state.darkMode ? 'border-white/10 bg-white/5' : 'border-slate-200 bg-white'} mb-2">
-                        <p class="${t.textSec} text-[10px] uppercase tracking-widest mb-1">Scan opdracht / serial / locatie</p>
-                        <div class="flex gap-2">
-                            <input type="text" value="${state.wmsScanInput}" oninput="setWmsScanInput(this.value)" placeholder="Scan of typ code" class="w-full bg-transparent border rounded-xl px-3 py-2 text-sm font-mono outline-none ${state.darkMode ? 'border-white/20 text-white placeholder:text-white/30 focus:border-red-400' : 'border-slate-300 text-slate-900 placeholder:text-slate-400 focus:border-red-500'}" />
-                            <button onclick="submitWmsScan('tasks')" class="px-3 rounded-xl border text-xs font-semibold ${state.darkMode ? 'border-white/20 bg-white/10 hover:bg-white/15' : 'border-slate-300 bg-slate-100 hover:bg-slate-200'}">Verwerk</button>
-                        </div>
-                    </div>
-                    <div class="p-3 rounded-xl border ${state.darkMode ? 'border-white/10 bg-white/5' : 'border-slate-200 bg-white'} mb-2">
-                        <p class="${t.textSec} text-[10px] uppercase tracking-widest mb-2">Nieuwe opdracht</p>
-                        <div class="grid grid-cols-1 gap-2">
-                            <input type="text" value="${state.taskForm.serial}" oninput="updateTaskForm('serial', this.value)" placeholder="serienummer" class="w-full bg-transparent border rounded-xl px-3 py-2 text-sm font-mono outline-none ${state.darkMode ? 'border-white/20 text-white placeholder:text-white/30 focus:border-red-400' : 'border-slate-300 text-slate-900 placeholder:text-slate-400 focus:border-red-500'}" />
-                            <input type="text" value="${state.taskForm.from}" oninput="updateTaskForm('from', this.value)" placeholder="van-locatie" class="w-full bg-transparent border rounded-xl px-3 py-2 text-sm font-mono outline-none ${state.darkMode ? 'border-white/20 text-white placeholder:text-white/30 focus:border-red-400' : 'border-slate-300 text-slate-900 placeholder:text-slate-400 focus:border-red-500'}" />
-                            <input type="text" value="${state.taskForm.to}" oninput="updateTaskForm('to', this.value)" placeholder="naar-locatie" class="w-full bg-transparent border rounded-xl px-3 py-2 text-sm font-mono outline-none ${state.darkMode ? 'border-white/20 text-white placeholder:text-white/30 focus:border-red-400' : 'border-slate-300 text-slate-900 placeholder:text-slate-400 focus:border-red-500'}" />
-                            <input type="text" value="${state.taskForm.note}" oninput="updateTaskForm('note', this.value)" placeholder="opmerking" class="w-full bg-transparent border rounded-xl px-3 py-2 text-sm outline-none ${state.darkMode ? 'border-white/20 text-white placeholder:text-white/30 focus:border-red-400' : 'border-slate-300 text-slate-900 placeholder:text-slate-400 focus:border-red-500'}" />
-                            <input type="text" value="${state.taskForm.requestedBy}" oninput="updateTaskForm('requestedBy', this.value)" placeholder="aanvrager" class="w-full bg-transparent border rounded-xl px-3 py-2 text-sm font-mono outline-none ${state.darkMode ? 'border-white/20 text-white placeholder:text-white/30 focus:border-red-400' : 'border-slate-300 text-slate-900 placeholder:text-slate-400 focus:border-red-500'}" />
-                            <button onclick="createMoveTask()" class="px-3 py-2 rounded-xl border text-xs font-semibold ${state.darkMode ? 'border-emerald-500/50 bg-emerald-500/15 text-emerald-200 hover:bg-emerald-500/25' : 'border-emerald-300 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'}">Opslaan opdracht</button>
-                        </div>
-                    </div>
-                    ${state.wmsScanFeedback ? `<div class="p-3 rounded-xl border ${state.wmsScanFeedback.status === 'success' ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-300' : 'border-amber-500/40 bg-amber-500/10 text-amber-200'} text-xs mb-2">${state.wmsScanFeedback.message}</div>` : ''}
-                    <div class="space-y-2">
-                        ${openTasks.length ? openTasks.map(move => `
-                            <div class="p-3 rounded-xl border ${state.darkMode ? 'border-white/10 bg-white/5' : 'border-slate-200 bg-white'}">
-                                <div class="flex items-start justify-between gap-2">
-                                    <div>
-                                        <p class="${t.textMain} text-sm font-semibold">${move.id}</p>
-                                        <p class="${t.textSec} text-xs font-mono">${move.serial}</p>
-                                        <p class="${t.textMain} text-xs mt-1">${move.from} → ${move.to}</p>
-                                        <p class="${t.textSec} text-xs mt-1">Aanvrager: <span class="font-semibold">${move.requestedBy || '-'}</span></p>
-                                        <p class="${t.textSec} text-xs">${move.note || 'Geen opmerking'}</p>
-                                    </div>
-                                    <button onclick="startMoveFromTask('${move.id}')" class="shrink-0 px-2 py-1 rounded-lg border text-[11px] font-semibold ${state.darkMode ? 'border-red-500/40 bg-red-500/15 text-red-200 hover:bg-red-500/25' : 'border-red-300 bg-red-50 text-red-700 hover:bg-red-100'}">
-                                        start verplaatsing
-                                    </button>
-                                </div>
-                            </div>
-                        `).join('') : `<div class="p-3 rounded-xl border ${state.darkMode ? 'border-white/10 bg-white/5' : 'border-slate-200 bg-white'}"><p class="${t.textSec} text-xs">Geen open opdrachten.</p></div>`}
-                    </div>
-                `;
-            }
-
-            if (state.wmsView === 'receive') {
-                const canSubmitReceipt = Boolean(
-                    state.receiveForm.serial.trim() &&
-                    state.receiveForm.deliveryNoteNumber.trim() &&
-                    state.receiveForm.externalDocumentNumber.trim() &&
-                    state.receiveForm.deviceNumber.trim() &&
-                    state.receiveForm.location.trim()
-                );
-                return `
-                    <p class="${t.textSec} text-xs uppercase tracking-widest mb-2">Goederenontvangst</p>
-                    <div class="p-3 rounded-xl border ${state.darkMode ? 'border-white/10 bg-white/5' : 'border-slate-200 bg-white'} mb-2">
-                        <p class="${t.textSec} text-[10px] uppercase tracking-widest mb-1">Scan serial / device / locatie</p>
-                        <div class="flex gap-2">
-                            <input type="text" value="${state.wmsScanInput}" oninput="setWmsScanInput(this.value)" placeholder="Scan of typ code" class="w-full bg-transparent border rounded-xl px-3 py-2 text-sm font-mono outline-none ${state.darkMode ? 'border-white/20 text-white placeholder:text-white/30 focus:border-red-400' : 'border-slate-300 text-slate-900 placeholder:text-slate-400 focus:border-red-500'}" />
-                            <button onclick="openScanner('receive-serial')" class="px-3 rounded-xl border text-xs font-semibold ${state.darkMode ? 'border-white/20 bg-white/10 hover:bg-white/15' : 'border-slate-300 bg-slate-100 hover:bg-slate-200'}"><i data-lucide="camera" width="14"></i></button>
-                            <button onclick="submitWmsScan('receive')" class="px-3 rounded-xl border text-xs font-semibold ${state.darkMode ? 'border-white/20 bg-white/10 hover:bg-white/15' : 'border-slate-300 bg-slate-100 hover:bg-slate-200'}">Verwerk</button>
-                        </div>
-                    </div>
-                    <div class="p-3 rounded-xl border ${state.darkMode ? 'border-white/10 bg-white/5' : 'border-slate-200 bg-white'} mb-2">
-                        <p class="${t.textSec} text-[10px] uppercase tracking-widest mb-2">Ontvangstformulier</p>
-                        <div class="grid grid-cols-1 gap-2">
-                            <input type="text" value="${state.receiveForm.deliveryNoteNumber}" oninput="updateReceiveForm('deliveryNoteNumber', this.value)" placeholder="pakbonnummer" class="w-full bg-transparent border rounded-xl px-3 py-2 text-sm font-mono outline-none ${state.darkMode ? 'border-white/20 text-white placeholder:text-white/30 focus:border-red-400' : 'border-slate-300 text-slate-900 placeholder:text-slate-400 focus:border-red-500'}" />
-                            <input type="text" value="${state.receiveForm.externalDocumentNumber}" oninput="updateReceiveForm('externalDocumentNumber', this.value)" placeholder="extern nummer" class="w-full bg-transparent border rounded-xl px-3 py-2 text-sm font-mono outline-none ${state.darkMode ? 'border-white/20 text-white placeholder:text-white/30 focus:border-red-400' : 'border-slate-300 text-slate-900 placeholder:text-slate-400 focus:border-red-500'}" />
-                            <input type="text" value="${state.receiveForm.serial}" oninput="updateReceiveForm('serial', this.value)" placeholder="serienummer" class="w-full bg-transparent border rounded-xl px-3 py-2 text-sm font-mono outline-none ${state.darkMode ? 'border-white/20 text-white placeholder:text-white/30 focus:border-red-400' : 'border-slate-300 text-slate-900 placeholder:text-slate-400 focus:border-red-500'}" />
-                            <input type="text" value="${state.receiveForm.deviceNumber}" oninput="updateReceiveForm('deviceNumber', this.value)" placeholder="devicenummer" class="w-full bg-transparent border rounded-xl px-3 py-2 text-sm font-mono outline-none ${state.darkMode ? 'border-white/20 text-white placeholder:text-white/30 focus:border-red-400' : 'border-slate-300 text-slate-900 placeholder:text-slate-400 focus:border-red-500'}" />
-                            <input type="text" value="${state.receiveForm.location}" oninput="updateReceiveForm('location', this.value)" placeholder="ontvangstlocatie" class="w-full bg-transparent border rounded-xl px-3 py-2 text-sm font-mono outline-none ${state.darkMode ? 'border-white/20 text-white placeholder:text-white/30 focus:border-red-400' : 'border-slate-300 text-slate-900 placeholder:text-slate-400 focus:border-red-500'}" />
-                            <div class="grid grid-cols-3 gap-2">
-                                <button onclick="openScanner('receive-serial')" class="px-2 py-2 rounded-xl border text-xs font-semibold ${state.darkMode ? 'border-white/20 bg-white/10 hover:bg-white/15' : 'border-slate-300 bg-slate-100 hover:bg-slate-200'}">Scan serial</button>
-                                <button onclick="openScanner('receive-device')" class="px-2 py-2 rounded-xl border text-xs font-semibold ${state.darkMode ? 'border-white/20 bg-white/10 hover:bg-white/15' : 'border-slate-300 bg-slate-100 hover:bg-slate-200'}">Scan device</button>
-                                <button onclick="openScanner('receive-location')" class="px-2 py-2 rounded-xl border text-xs font-semibold ${state.darkMode ? 'border-white/20 bg-white/10 hover:bg-white/15' : 'border-slate-300 bg-slate-100 hover:bg-slate-200'}">Scan locatie</button>
-                            </div>
-                            ${Button('Registreer ontvangst', 'submitReceiveForm()', 'success', 'check-circle', !canSubmitReceipt)}
-                        </div>
-                        <p class="${t.textSec} text-[11px] mt-2">Verwerking is serial-first: serienummer bepaalt update of nieuwe asset.</p>
-                    </div>
-                    ${state.wmsScanFeedback ? `<div class="p-3 rounded-xl border ${state.wmsScanFeedback.status === 'success' ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-300' : 'border-amber-500/40 bg-amber-500/10 text-amber-200'} text-xs mb-2">${state.wmsScanFeedback.message}</div>` : ''}
-                    <div class="space-y-2">
-                        ${RECEIPTS.map(receipt => `
-                            <div class="p-3 rounded-xl border ${state.darkMode ? 'border-white/10 bg-white/5' : 'border-slate-200 bg-white'}">
-                                <p class="${t.textMain} text-sm font-semibold">${receipt.id}</p>
-                                <p class="${t.textSec} text-xs">${receipt.supplier}</p>
-                                <p class="${t.textSec} text-xs">Pakbon ${receipt.deliveryNoteNumber} · Extern ${receipt.externalDocumentNumber}</p>
-                                <p class="${t.textMain} text-xs mt-1">Dock ${receipt.dock} · ${receipt.status}</p>
-                                <p class="${t.textSec} text-xs font-mono mt-1">${receipt.serial} · ${receipt.deviceNumber}</p>
-                            </div>
-                        `).join('')}
-                    </div>
-                `;
-            }
-
-            const historyRows = getSortedHistoryEntries();
-            return `
-                <p class="${t.textSec} text-xs uppercase tracking-widest mb-2">Laatste activiteiten</p>
-                <div class="p-3 rounded-xl border ${state.darkMode ? 'border-white/10 bg-white/5' : 'border-slate-200 bg-white'} mb-2">
-                    <p class="${t.textMain} text-sm font-semibold">Historie / Audit trail</p>
-                    <p class="${t.textSec} text-xs mt-1">Nieuwste eerst · Verplaatsingen en ontvangsten direct zichtbaar.</p>
-                </div>
-                <div class="hidden md:grid grid-cols-[80px_140px_120px_84px_84px_70px_96px_minmax(120px,1fr)] gap-2 px-2 pb-2 ${t.textSec} text-[10px] uppercase tracking-widest">
-                    <span>Type</span><span>Serienummer</span><span>Devicenr</span><span>Van</span><span>Naar</span><span>Operator</span><span>Tijd</span><span>Opmerking</span>
-                </div>
-                <div class="space-y-2 max-h-[43vh] overflow-y-auto no-scrollbar pr-1">
-                    ${historyRows.map(log => `
-                        <div class="p-3 rounded-xl border ${state.darkMode ? 'border-white/10 bg-white/5' : 'border-slate-200 bg-white'}">
-                            <div class="grid grid-cols-1 md:grid-cols-[80px_140px_120px_84px_84px_70px_96px_minmax(120px,1fr)] gap-2 text-xs">
-                                <div><p class="${t.textSec} md:hidden text-[10px] uppercase">Type</p><span class="inline-flex px-2 py-0.5 rounded-full text-[10px] font-semibold ${log.type === 'move' ? 'bg-blue-500/20 text-blue-200' : 'bg-emerald-500/20 text-emerald-200'}">${log.type === 'move' ? 'move' : 'receipt'}</span></div>
-                                <div><p class="${t.textSec} md:hidden text-[10px] uppercase">Serienummer</p><p class="font-mono ${t.textMain}">${log.serial || '-'}</p></div>
-                                <div><p class="${t.textSec} md:hidden text-[10px] uppercase">Devicenummer</p><p class="font-mono ${t.textMain}">${log.deviceNumber || '-'}</p></div>
-                                <div><p class="${t.textSec} md:hidden text-[10px] uppercase">Van</p><p class="${t.textMain} font-mono">${log.from || '-'}</p></div>
-                                <div><p class="${t.textSec} md:hidden text-[10px] uppercase">Naar</p><p class="${t.textMain} font-mono">${log.to || '-'}</p></div>
-                                <div><p class="${t.textSec} md:hidden text-[10px] uppercase">Operator</p><p class="${t.textMain} font-semibold">${log.operator || '-'}</p></div>
-                                <div><p class="${t.textSec} md:hidden text-[10px] uppercase">Tijd</p><p class="${t.textMain}">${new Date(log.timestamp || log.loggedAt).toLocaleString('nl-NL', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</p></div>
-                                <div><p class="${t.textSec} md:hidden text-[10px] uppercase">Opmerking</p><p class="${t.textSec}">${log.note || '-'}</p></div>
-                            </div>
-                        </div>
-                    `).join('')}
-                </div>
-            `;
-        }
-
         function renderDashboard() {
             const t = getTheme();
-            const sortedOrders = sortOrders(MOCK_ORDERS);
-            const sortLabels = {
-                priority: 'Urgentie',
-                destination: 'Bestemming',
-                createdAt: 'Aanmaakdatum'
-            };
+            const stats = getStats();
+            const recentHistory = state.db.history.slice(0, 5);
             return `
-                <div id="dashboard-view" class="h-full flex flex-col px-4 pt-4 pb-2 overflow-hidden transition-all duration-500">
-                    <div id="dashboard-header" class="flex-none z-20 transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] pb-2 pt-0 border-b border-transparent">
-
-                        <!-- Header met Initialen (Links) en Logout (Rechts) -->
-                        <div class="header-profile flex justify-between items-center mb-2 transition-all duration-500">
-                            
-                            <!-- Initialen (LINKSBOVEN) -->
-                            <div class="header-initials transition-all duration-300">
-                                <div class="w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm ${state.darkMode ? 'bg-white text-black' : 'bg-slate-900 text-white'} shadow-lg mb-1">
-                                    ${state.user?.initials || 'N/B'}
-                                </div>
-                                <p class="text-[10px] uppercase tracking-wider font-semibold ${t.textSec}">Operator</p>
-                            </div>
-
-                            <!-- Logout -->
-                            <div class="header-logout transition-all duration-300">
-                                <button onclick="logout()" class="p-2 rounded-full ${state.darkMode ? 'bg-white/5 hover:bg-white/10' : 'bg-white/60 hover:bg-white/80'}">
-                                    <i data-lucide="log-out" class="text-red-500" width="20"></i>
-                                </button>
-                            </div>
+                <div class="h-full flex flex-col px-4 pt-4 pb-2 overflow-hidden">
+                    <div class="flex items-center justify-between mb-4">
+                        <div>
+                            <p class="text-xs uppercase tracking-[0.25em] ${t.textSec}">Operator</p>
+                            <h1 class="text-xl font-bold ${t.textMain}">${state.user.initials}</h1>
                         </div>
-                        
-                    </div>
-
-                    <div id="scroll-container" class="flex-1 overflow-y-auto pb-16 no-scrollbar relative mt-1">
-                        <!-- Sticky header nog compacter -->
-                        <div class="sticky top-0 z-10 py-2 backdrop-blur-xl transition-colors ${state.darkMode ? 'bg-[#050505]/80' : 'bg-[#f0f4f8]/80'} flex items-center justify-between gap-3 mb-2">
-                            <div>
-                                <h3 class="${t.textMain} text-base font-semibold">Openstaande Orders</h3>
-                                <p class="${t.textSec} text-[11px] leading-tight">Gesorteerd op <span class="font-semibold">${sortLabels[state.sortOption]}</span></p>
-                            </div>
-                            <div class="flex items-center gap-2">
-                                <div class="flex items-center gap-1 bg-white/5 border border-white/10 rounded-xl p-1 ${state.darkMode ? '' : 'bg-white/70 border-slate-200'}">
-                                    ${['priority','destination','createdAt'].map(option => `
-                                        <button onclick="setSortOption('${option}')" class="text-[11px] px-2 py-1 rounded-lg font-semibold flex items-center gap-1 transition-all ${state.sortOption === option
-                                            ? 'bg-red-600 text-white shadow-lg shadow-red-900/20'
-                                            : `${t.textSec} hover:${state.darkMode ? 'bg-white/10' : 'bg-white/70'}`}">
-                                            <i data-lucide="${option === 'priority' ? 'flame' : option === 'destination' ? 'map-pin' : 'clock'}" width="12"></i>
-                                            <span class="capitalize">${option === 'createdAt' ? 'datum' : option}</span>
-                                        </button>
-                                    `).join('')}
-                                </div>
-                                <span class="text-[10px] font-bold bg-red-600 text-white px-2 py-0.5 rounded-full">${MOCK_ORDERS.length} Totaal</span>
-                            </div>
-                        </div>
-                        <!-- Space-y-2 i.p.v. space-y-4 voor dichtere lijst -->
-                        <div class="space-y-2">
-                            ${sortedOrders.map(order => GlassCard(`
-                                <div class="flex items-center gap-3">
-                                    <!-- Kleiner icoon container w-10 h-10 -->
-                                    <div class="w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${priorityStyles[order.priority]?.icon || 'bg-blue-500/20 text-blue-500'}">
-                                        <i data-lucide="package" width="18"></i>
-                                    </div>
-                                    <div class="min-w-0 flex-1">
-                                        <div class="flex items-center gap-2 mb-1">
-                                            <h4 class="${t.textMain} font-bold text-sm truncate">${order.id}</h4>
-                                            <span class="text-[10px] uppercase tracking-widest px-2 py-1 rounded-full font-bold ${priorityStyles[order.priority]?.chip}">${priorityStyles[order.priority]?.label || 'N.v.t.'}</span>
-                                            <span class="text-[10px] uppercase tracking-widest px-2 py-1 rounded-full font-bold ${statusStyles[order.status]?.chip || 'bg-white/10 text-white/80 border border-white/20'}">${statusStyles[order.status]?.label || 'Open'}</span>
-                                        </div>
-                                        <div class="flex items-center gap-2 ${t.textSec} text-xs mt-0.5 flex-wrap">
-                                            <div class="flex items-center gap-1">
-                                                <i data-lucide="map-pin" width="12"></i>
-                                                <span class="font-mono bg-white/10 px-1 rounded truncate">${order.destination || 'GEEN LOC'}</span>
-                                            </div>
-                                            <span class="hidden sm:inline">•</span>
-                                            <span class="whitespace-nowrap flex items-center gap-1"><i data-lucide="clock" width="12"></i>${new Date(order.createdAt).toLocaleString('nl-NL', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}</span>
-                                            <span class="hidden sm:inline">•</span>
-                                            ${(() => {
-                                                const lineCounts = getOrderLineCountsForOrder(order);
-                                                return `<span class="whitespace-nowrap flex items-center gap-1"><i data-lucide="list" width="12"></i>Nog ${lineCounts.remainingLines} / ${lineCounts.totalLines} regels</span>`;
-                                            })()}
-                                        </div>
-                                    </div>
-                                    <div class="ml-auto shrink-0">
-                                        <i data-lucide="chevron-right" class="${state.darkMode ? 'text-white/60' : 'text-slate-600'}" width="16"></i>
-                                    </div>
-                                </div>
-                            `, `openOrder('${order.id}')`, 'group active:scale-[0.98] cursor-pointer')).join('<div class="h-2"></div>')} 
-                            <!-- Tussenruimte h-2 i.p.v. h-4 -->
+                        <div class="flex items-center gap-2">
+                            <button onclick="window.toggleTheme()" class="p-2 rounded-xl border ${t.chip}"><i data-lucide="${state.darkMode ? 'sun' : 'moon'}" width="18"></i></button>
+                            <button onclick="window.logout()" class="p-2 rounded-xl border ${t.chip}"><i data-lucide="log-out" width="18"></i></button>
                         </div>
                     </div>
-                    ${renderNav()}
-                </div>
-            `;
-        }
 
-        function renderPicking() {
-            const t = getTheme();
-            if (!state.activeOrder) return '';
-            
-            // --- LOGICA VOOR DESTINATION WIJZIGEN ---
-            const destinationBlock = state.isEditingDestination ? `
-                <div class="flex flex-col gap-2 w-full">
-                    <input id="destination-input" type="text" value="${state.newDestinationInput || state.activeOrder.destination || ''}" oninput="setNewDestinationInput(this.value)"
-                        class="bg-white/10 text-white p-2 rounded-lg font-mono text-xl outline-none focus:ring-2 focus:ring-red-500 transition-all uppercase"
-                    />
-                    <p class="text-xs ${t.textSec}">Kies een bekende locatie of selecteer een suggestie.</p>
-                    ${state.destinationError ? `<div class="flex items-center gap-1 text-amber-300 text-sm"><i data-lucide="alert-triangle" width="14"></i>${state.destinationError}</div>` : ''}
-                    <div class="flex flex-wrap gap-2" aria-label="Suggesties voor bestemming">
-                        ${state.destinationSuggestions.length > 0
-                            ? state.destinationSuggestions.map(loc => `
-                                <button onclick="applyDestinationSuggestion('${loc}')" class="px-3 py-1 rounded-full border border-white/20 bg-white/5 hover:bg-white/10 transition text-xs font-mono">${loc}</button>
-                            `).join('')
-                            : `<span class="text-xs text-amber-200">Geen suggesties gevonden.</span>`}
-                    </div>
-                    <div class="flex gap-2">
-                        ${Button('Opslaan', 'saveDestination()', 'success', 'save', state.newDestinationInput.length < 1)}
-                        ${Button('Annuleren', 'toggleEditDestination()', 'secondary', 'x', false)}
-                    </div>
-                </div>
-            ` : `
-                <div onclick="toggleEditDestination()" class="flex items-center gap-2 cursor-pointer group w-full">
-                    <h1 class="text-xl font-mono font-bold text-red-500">${state.activeOrder.destination || 'GEEN LOCATIE'}</h1>
-                    <i data-lucide="edit" width="16" class="text-red-500/70 group-hover:text-red-500 transition-colors shrink-0"></i>
-                </div>
-            `;
-            // --- EINDE LOGICA ---
-
-
-            let itemsHtml = '';
-
-            if (state.isLoadingOrderLines) {
-                itemsHtml = GlassCard(
-                    `<div class="flex items-center gap-2 text-sm ${t.textSec}">
-                        <i data-lucide="loader-2" class="animate-spin" width="16"></i>
-                        Orderregels laden...
-                    </div>`,
-                    null,
-                    'border-dashed border border-white/10'
-                );
-            } else if (state.orderLineError) {
-                itemsHtml = GlassCard(
-                    `<div class="flex flex-col gap-2 ${t.textSec}">
-                        <div class="flex items-center gap-2 text-amber-400"><i data-lucide="alert-triangle" width="16"></i>${state.orderLineError}</div>
-                        <p class="text-xs">Probeer te vernieuwen of neem contact op met de planner.</p>
-                    </div>`,
-                    null,
-                    'border border-amber-500/40 bg-amber-500/10'
-                );
-            } else if (!state.pickItems || state.pickItems.length === 0) {
-                itemsHtml = GlassCard(
-                    `<div class="flex items-center gap-2 text-sm ${t.textSec}">
-                        <i data-lucide="inbox" width="16"></i>
-                        Geen orderregels gevonden voor deze order.
-                    </div>`,
-                    null,
-                    'border-dashed border border-white/10'
-                );
-            } else {
-                const searchTerm = (state.pickSearchTerm || '').trim().toLowerCase();
-                const sortedItems = getFilteredPickItems();
-
-                if (sortedItems.length === 0) {
-                    itemsHtml = GlassCard(
-                        `<div class="flex items-center gap-2 text-sm ${t.textSec}">
-                            <i data-lucide="search-x" width="16"></i>
-                            Geen resultaten voor "${state.pickSearchTerm}".
-                        </div>`,
-                        null,
-                        'border-dashed border border-white/10'
-                    );
-                } else {
-                    itemsHtml = sortedItems.map(item => {
-                        const isSelected = state.pickedItems.has(item.id);
-                        const borderClass = isSelected
-                            ? (state.darkMode ? 'border-emerald-500/50 bg-emerald-500/10' : 'border-emerald-500 bg-emerald-50')
-                            : '';
-                        const checkBg = isSelected
-                            ? 'bg-emerald-500 text-white border-emerald-500'
-                            : (state.darkMode ? 'bg-white/5 border-white/10' : 'bg-slate-50 border-slate-200');
-
-                        // Padding verlaagd en margins aangepast voor compactere lijst
-                        return GlassCard(`
-                            <div class="flex items-stretch min-h-[4rem] -m-3">
-                                <div class="w-12 flex items-center justify-center border-r transition-colors ${checkBg}">
-                                    <i data-lucide="${isSelected ? 'check-square' : 'square'}" width="20" class="${isSelected ? 'text-white' : (state.darkMode ? 'text-white/60' : 'text-slate-400')}"></i>
-                                </div>
-                                <div class="flex-1 p-3 flex flex-col justify-center">
-                                    <div class="flex justify-between items-start">
-                                        <span class="text-[10px] font-mono px-1.5 py-0.5 rounded mb-0.5 inline-block ${state.darkMode ? 'bg-white/10' : 'bg-slate-200 text-slate-700'}">
-                                            ${item.location}
-                                        </span>
-                                        <span class="${t.textMain} font-bold text-base">${item.qty} <span class="text-[10px] font-normal opacity-60">${item.unit}</span></span>
-                                    </div>
-                                    <h4 class="${t.textMain} font-bold text-sm leading-tight truncate">${item.name}</h4>
-                                    <div class="${t.textSec} text-[10px] font-mono mt-0.5">${item.id}</div>
-                                </div>
-                            </div>
-                        `, `togglePickItem('${item.id}')`, `transition-all duration-200 ${borderClass} !p-0`);
-                    }).join('<div class="h-2"></div>');
-                }
-            }
-
-            return `
-                 <div class="h-full flex flex-col px-4 pt-4 pb-2">
-                    <div class="flex items-start gap-3 mb-3 shrink-0">
-                        <button onclick="navigate('dashboard')" class="p-2 rounded-full ${state.darkMode ? 'bg-white/10 hover:bg-white/20 text-white' : 'bg-white border border-slate-200 hover:bg-slate-50 text-slate-900'} transition-colors">
-                            <i data-lucide="arrow-left" width="20"></i>
-                        </button>
-                        <div class="flex-1 min-w-0">
-                            <h2 class="${state.darkMode ? 'text-white/60' : 'text-slate-600'} text-[10px] uppercase tracking-widest">Verplaatsen Naar</h2>
-                            ${destinationBlock}
-                        </div>
-                    </div>
                     ${GlassCard(`
-                        <div class="flex flex-col gap-3">
-                            <div class="flex items-center justify-between gap-3">
-                                <div class="flex-1">
-                                    <p class="${t.textSec} text-[10px] uppercase tracking-[0.2em] font-semibold mb-2">Barcode / QR-scan</p>
-                                    <div class="flex gap-2 items-center">
-                                        <input id="manual-scan-input" type="text" value="${state.manualScanInput}" oninput="setManualScanInput(this.value)" onkeydown="if(event.key==='Enter'){submitManualScan();}" placeholder="Scan of typ code" class="flex-1 bg-transparent border rounded-xl px-3 py-2 text-sm ${state.darkMode ? 'border-white/20 text-white placeholder:text-white/30 focus:border-red-500' : 'border-slate-200 text-slate-900 placeholder:text-slate-400 focus:border-red-500'} outline-none" />
-                                        <button onclick="submitManualScan()" class="px-4 py-2 rounded-xl text-sm font-semibold ${state.darkMode ? 'bg-red-600 text-white hover:bg-red-500' : 'bg-red-600 text-white hover:bg-red-500'} transition-colors">Bevestig</button>
-                                    </div>
-                                </div>
-                                <button onclick="openScanner('picking')" class="p-3 rounded-xl border ${state.darkMode ? 'border-white/10 bg-white/5 text-white hover:bg-white/10' : 'border-slate-200 bg-white text-slate-900 hover:bg-slate-50'} transition-colors shrink-0">
-                                    <i data-lucide="camera" width="18"></i>
-                                </button>
+                        <div class="flex items-start justify-between gap-3 mb-4">
+                            <div>
+                                <p class="text-xs uppercase tracking-[0.25em] ${t.textSec}">Doel van deze mockup</p>
+                                <h2 class="text-lg font-bold ${t.textMain}">Scanbewegingen zichtbaar maken</h2>
                             </div>
-                            ${state.scanFeedback ? `<div class="text-xs px-3 py-2 rounded-lg border ${state.scanFeedback.status === 'success' ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-200' : 'bg-amber-500/10 border-amber-500/30 text-amber-200'}">${state.scanFeedback.message}</div>` : ''}
+                            <span class="px-3 py-1 rounded-full text-xs border ${t.chip}">Web mockup</span>
                         </div>
-                    `, null, 'mb-3')}
-                    <div class="p-3 rounded-xl mb-3 text-xs ${state.darkMode ? 'bg-blue-500/10 text-blue-200 border border-blue-500/20' : 'bg-blue-50 text-blue-800 border border-blue-200'}">Selecteer items.</div>
-                    <div class="flex items-center gap-2 mb-3">
-                        <div class="flex-1 relative">
-                            <i data-lucide="search" width="16" class="absolute left-3 top-1/2 -translate-y-1/2 ${state.darkMode ? 'text-white/50' : 'text-slate-400'}"></i>
-                            <input
-                                type="text"
-                                value="${state.pickSearchTerm}"
-                                oninput="handlePickSearch(this.value)"
-                                placeholder="Zoek op naam, SKU of locatie"
-                                class="w-full rounded-xl bg-transparent border px-9 py-2 text-sm ${state.darkMode ? 'border-white/15 text-white placeholder:text-white/40 focus:border-red-500' : 'border-slate-200 text-slate-900 placeholder:text-slate-400 focus:border-red-500'} outline-none"
-                            />
-                            ${state.pickSearchTerm ? `<button onclick=\"handlePickSearch('')\" class=\"absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded-full ${state.darkMode ? 'bg-white/10 hover:bg-white/20 text-white' : 'bg-slate-100 hover:bg-slate-200 text-slate-700'}\"><i data-lucide=\"x\" width=\"14\"></i></button>` : ''}
+                        <div class="grid grid-cols-2 gap-3">
+                            <div class="rounded-xl border ${t.chip} p-3"><div class="text-2xl font-bold">${stats.assets}</div><div class="text-xs ${t.textSec}">Machines in mockdata</div></div>
+                            <div class="rounded-xl border ${t.chip} p-3"><div class="text-2xl font-bold">${stats.openTasks}</div><div class="text-xs ${t.textSec}">Open opdrachten</div></div>
+                            <div class="rounded-xl border ${t.chip} p-3"><div class="text-2xl font-bold">${stats.movesToday}</div><div class="text-xs ${t.textSec}">Verplaatsingen</div></div>
+                            <div class="rounded-xl border ${t.chip} p-3"><div class="text-2xl font-bold">${stats.receiptsToday}</div><div class="text-xs ${t.textSec}">Ontvangsten</div></div>
                         </div>
-                        <div class="relative">
-                            <select onchange="setPickSortOption(this.value)" class="appearance-none pr-8 pl-3 py-2 rounded-xl text-sm border ${state.darkMode ? 'bg-white/5 border-white/15 text-white focus:border-red-500' : 'bg-white border-slate-200 text-slate-900 focus:border-red-500'}">
-                                <option value="default" ${state.pickSortOption === 'default' ? 'selected' : ''}>Volgorde</option>
-                                <option value="name" ${state.pickSortOption === 'name' ? 'selected' : ''}>Naam</option>
-                                <option value="sku" ${state.pickSortOption === 'sku' ? 'selected' : ''}>SKU</option>
-                                <option value="location" ${state.pickSortOption === 'location' ? 'selected' : ''}>Locatie</option>
-                            </select>
-                            <i data-lucide="chevrons-up-down" width="14" class="absolute right-2 top-1/2 -translate-y-1/2 ${state.darkMode ? 'text-white/50' : 'text-slate-400'}"></i>
-                        </div>
+                    `, 'mb-4')}
+
+                    <div class="grid grid-cols-2 gap-3 mb-4">
+                        ${GlassCard(`<button onclick="window.navigate('move')" class="w-full text-left"><div class="flex items-center gap-3"><div class="w-10 h-10 rounded-xl bg-red-500/20 flex items-center justify-center"><i data-lucide="move-right" class="text-red-500" width="18"></i></div><div><div class="font-bold">Verplaatsen</div><div class="text-xs ${t.textSec}">Machine naar locatie</div></div></div></button>`)}
+                        ${GlassCard(`<button onclick="window.navigate('tasks')" class="w-full text-left"><div class="flex items-center gap-3"><div class="w-10 h-10 rounded-xl bg-blue-500/20 flex items-center justify-center"><i data-lucide="clipboard-list" class="text-blue-400" width="18"></i></div><div><div class="font-bold">Opdrachten</div><div class="text-xs ${t.textSec}">Aanvragen collega</div></div></div></button>`)}
+                        ${GlassCard(`<button onclick="window.navigate('receive')" class="w-full text-left"><div class="flex items-center gap-3"><div class="w-10 h-10 rounded-xl bg-emerald-500/20 flex items-center justify-center"><i data-lucide="package-check" class="text-emerald-400" width="18"></i></div><div><div class="font-bold">Ontvangst</div><div class="text-xs ${t.textSec}">Pakbon koppelen</div></div></div></button>`)}
+                        ${GlassCard(`<button onclick="window.navigate('history')" class="w-full text-left"><div class="flex items-center gap-3"><div class="w-10 h-10 rounded-xl bg-amber-500/20 flex items-center justify-center"><i data-lucide="history" class="text-amber-400" width="18"></i></div><div><div class="font-bold">Historie</div><div class="text-xs ${t.textSec}">Laatste scans</div></div></div></button>`)}
                     </div>
-                    <div class="flex-1 overflow-y-auto space-y-2 pr-1 pb-4 no-scrollbar">${itemsHtml}</div>
-                    <div class="mt-2 pt-2 border-t ${state.darkMode ? 'border-white/10' : 'border-slate-200'}">
-                        <div class="flex justify-between items-center mb-2 px-1">
-                            <span class="${t.textSec} text-xs">Geselecteerd</span>
-                            <span class="${t.textMain} font-bold text-lg">${state.pickedItems.size} <span class="text-xs font-normal opacity-50">/ ${state.pickItems.length}</span></span>
-                        </div>
-                        ${Button(state.pickedItems.size > 0 ? `Verplaats ${state.pickedItems.size} Items` : "Selecteer Items", 'openConfirmationModal()', state.pickedItems.size > 0 ? 'success' : 'secondary', 'arrow-right', state.pickedItems.size === 0)}
+
+                    <div class="flex items-center justify-between mb-2">
+                        <h3 class="font-semibold ${t.textMain}">Recente activiteit</h3>
+                        <button onclick="window.resetMockData()" class="text-xs px-3 py-1 rounded-full border ${t.chip}">Reset mockdata</button>
+                    </div>
+                    <div class="flex-1 overflow-y-auto no-scrollbar space-y-2 pb-20">
+                        ${recentHistory.map(item => GlassCard(`
+                            <div class="flex items-start gap-3">
+                                <div class="w-10 h-10 rounded-xl flex items-center justify-center ${item.type === 'move' ? 'bg-red-500/20 text-red-400' : 'bg-emerald-500/20 text-emerald-400'}">
+                                    <i data-lucide="${item.type === 'move' ? 'move-right' : 'package-check'}" width="18"></i>
+                                </div>
+                                <div class="flex-1 min-w-0">
+                                    <div class="flex items-center justify-between gap-2 mb-1">
+                                        <h4 class="font-bold text-sm truncate">${item.serial}</h4>
+                                        <span class="text-[11px] ${t.textSec}">${formatDateTime(item.createdAt)}</span>
+                                    </div>
+                                    <p class="text-sm ${t.textSec}">${item.fromLocation} → <span class="font-mono text-white">${item.toLocation}</span></p>
+                                    <p class="text-xs ${t.textSec}">${item.note || ''}</p>
+                                </div>
+                            </div>
+                        `)).join('')}
                     </div>
                     ${renderNav()}
                 </div>
             `;
         }
 
-        function renderAssetScan() {
+        function renderMove() {
             const t = getTheme();
-            const { scanStep, scannedData } = state;
-            let content = '';
-
-            if (scanStep === 3) {
-                 content = `
-                    <div class="absolute inset-0 z-50 flex flex-col items-center justify-center animate-pulse rounded-3xl border ${state.darkMode ? 'bg-black/80 border-white/10' : 'bg-white/90 border-slate-200'} backdrop-blur-xl">
-                        <div class="bg-emerald-500/20 p-5 rounded-full mb-4 border border-emerald-500/50">
-                            <i data-lucide="check-circle" class="text-emerald-500" width="40" height="40"></i>
-                        </div>
-                        <h2 class="text-xl font-bold ${t.textMain} mb-1">Gekoppeld!</h2>
-                        <div class="${t.textSec} text-center max-w-[200px] text-xs">Data succesvol opgeslagen.</div>
-                    </div>
-                 `;
-            } else {
-                content = `
-                     <div class="flex-1 flex flex-col justify-start pt-2 space-y-4 relative pb-10">
-                        <div class="absolute left-6 top-6 bottom-12 w-0.5 ${state.darkMode ? 'bg-white/10' : 'bg-slate-200'} -z-10"></div>
-                        <!-- Step 1 -->
-                        <div class="w-full transition-all duration-500 ${scanStep > 1 ? 'opacity-50' : 'opacity-100'}">
-                            <div class="flex gap-3">
-                                <div class="w-10 h-10 rounded-full flex items-center justify-center shrink-0 z-10 transition-colors ${scanStep > 0 ? 'bg-emerald-500 text-white shadow-lg' : (state.darkMode ? 'bg-[#050505] border border-white/20' : 'bg-white border border-slate-200')}">
-                                    <i data-lucide="${scanStep > 0 ? 'check-circle' : 'truck'}" width="18"></i>
-                                </div>
-                                ${GlassCard(`
-                                    <h3 class="${state.darkMode ? 'text-white/60' : 'text-slate-600'} text-xs uppercase mb-0.5 font-medium tracking-wider">Stap 1</h3>
-                                    <div class="text-lg font-bold ${t.textMain} mb-2">Scan Heftruck ID</div>
-                                    ${scannedData.truck ? `<div class="bg-emerald-500/10 border border-emerald-500/20 rounded-xl p-2 flex items-center gap-2"><i data-lucide="truck" class="text-emerald-500" width="16"></i><span class="text-emerald-500 font-mono text-base">${scannedData.truck}</span></div>` : Button('Start Camera', "openScanner('asset-truck')", 'primary', 'camera')}
-                                `, null, 'flex-1')}
-                            </div>
-                        </div>
-                        <!-- Step 2 -->
-                         <div class="w-full transition-all duration-500 ${scanStep === 0 ? 'opacity-30 blur-[1px]' : ''}">
-                            <div class="flex gap-3">
-                                <div class="w-10 h-10 rounded-full flex items-center justify-center shrink-0 z-10 transition-colors ${scanStep > 1 ? 'bg-emerald-500 text-white shadow-lg' : (state.darkMode ? 'bg-[#050505] border border-white/20' : 'bg-white border border-slate-200')}">
-                                    <i data-lucide="${scanStep > 1 ? 'check-circle' : 'map-pin'}" width="18"></i>
-                                </div>
-                                ${GlassCard(`
-                                    <h3 class="${state.darkMode ? 'text-white/60' : 'text-slate-600'} text-xs uppercase mb-0.5 font-medium tracking-wider">Stap 2</h3>
-                                    <div class="text-lg font-bold ${t.textMain} mb-2">Scan Locatie</div>
-                                    ${scannedData.location ? `<div class="bg-emerald-500/10 border border-emerald-500/20 rounded-xl p-2 flex items-center gap-2"><i data-lucide="map-pin" class="text-emerald-500" width="16"></i><span class="text-emerald-500 font-mono text-base">${scannedData.location}</span></div>` : Button('Start Camera', scanStep >= 1 ? "openScanner('asset-location')" : '', scanStep >= 1 ? 'primary' : 'secondary', 'camera', scanStep === 0)}
-                                `, null, 'flex-1')}
-                            </div>
-                        </div>
-                        ${scanStep === 2 ? GlassCard(`
-                            <div class="flex items-start gap-3 mb-3">
-                                <div class="bg-yellow-500/20 p-2 rounded-full text-yellow-500"><i data-lucide="alert-triangle" width="20"></i></div>
-                                <div><h3 class="${t.textMain} font-bold text-base">Bevestig</h3><p class="${t.textSec} text-xs mt-0.5">Koppel truck <strong>${scannedData.truck}</strong> aan <strong>${scannedData.location}</strong>?</p></div>
-                            </div>
-                            <div class="flex gap-3 mt-3"><button onclick="resetLoc()" class="flex-1 py-2 rounded-xl bg-white/10 text-white text-sm">Wijzig</button><button onclick="confirmAssetLink()" class="flex-1 py-2 rounded-xl bg-emerald-600 text-white shadow-lg text-sm">Bevestig</button></div>
-                        `, null, 'border-l-4 border-l-yellow-500 animate-pulse') : ''}
-                    </div>
-                `;
-            }
-
+            const form = state.forms.move;
+            const asset = getAssetByCode(form.serial);
+            const linkedTask = state.activeTaskId ? state.db.tasks.find(item => item.id === state.activeTaskId) : null;
             return `
-                 <div class="h-full flex flex-col px-4 pt-4 pb-2 overflow-hidden">
-                    <div class="flex items-center gap-3 mb-4 shrink-0">
-                        <button onclick="navigate('dashboard')" class="p-2 rounded-full ${state.darkMode ? 'bg-white/10 hover:bg-white/20 text-white' : 'bg-white border border-slate-200 hover:bg-slate-50 text-slate-900'} transition-colors"><i data-lucide="arrow-left" width="20"></i></button>
-                        <h1 class="text-lg font-bold ${t.textMain}">Heftruck Lokalisatie</h1>
+                <div class="h-full flex flex-col px-4 pt-4 pb-2 overflow-hidden">
+                    <div class="flex items-center gap-3 mb-4">
+                        <button onclick="window.navigate('dashboard')" class="p-2 rounded-xl border ${t.chip}"><i data-lucide="arrow-left" width="18"></i></button>
+                        <div>
+                            <h1 class="text-lg font-bold ${t.textMain}">Verplaatsen</h1>
+                            <p class="text-xs ${t.textSec}">Scan of typ serienummer en doellocatie.</p>
+                        </div>
                     </div>
-                    ${content}
+
+                    ${linkedTask ? GlassCard(`
+                        <div class="flex items-start justify-between gap-3">
+                            <div>
+                                <p class="text-xs uppercase tracking-[0.2em] ${t.textSec}">Actieve opdracht</p>
+                                <h3 class="font-bold">${linkedTask.id}</h3>
+                                <p class="text-sm ${t.textSec}">${linkedTask.fromLocation} → ${linkedTask.toLocation}</p>
+                            </div>
+                            <button onclick="window.clearTaskLink()" class="text-xs px-3 py-1 rounded-full border ${t.chip}">Loskoppelen</button>
+                        </div>
+                    `, 'mb-3') : ''}
+
+                    ${GlassCard(`
+                        <div class="space-y-4">
+                            <div>
+                                <div class="flex items-center justify-between mb-2">
+                                    <label class="text-xs uppercase tracking-[0.2em] ${t.textSec}">Serienummer of device</label>
+                                    <button onclick="window.openScanner('move-serial')" class="text-xs px-3 py-1 rounded-full border ${t.chip}">Scan</button>
+                                </div>
+                                <input value="${form.serial}" oninput="window.updateMoveField('serial', this.value)" placeholder="Bijv. H2X386Y00010" class="w-full rounded-xl border px-3 py-3 outline-none ${t.input}" />
+                            </div>
+                            <div>
+                                <div class="flex items-center justify-between mb-2">
+                                    <label class="text-xs uppercase tracking-[0.2em] ${t.textSec}">Naar locatie</label>
+                                    <button onclick="window.openScanner('move-location')" class="text-xs px-3 py-1 rounded-full border ${t.chip}">Scan</button>
+                                </div>
+                                <input value="${form.toLocation}" oninput="window.updateMoveField('toLocation', this.value)" placeholder="Bijv. W16" class="w-full rounded-xl border px-3 py-3 outline-none ${t.input}" />
+                            </div>
+                            <div>
+                                <label class="text-xs uppercase tracking-[0.2em] ${t.textSec}">Opmerking</label>
+                                <textarea oninput="window.updateMoveField('note', this.value)" placeholder="Optionele toelichting" class="w-full rounded-xl border px-3 py-3 outline-none min-h-[96px] ${t.input}">${form.note}</textarea>
+                            </div>
+                            ${Button('Verplaats machine', 'window.submitMove()', 'success', 'check')}
+                        </div>
+                    `, 'mb-3')}
+
+                    ${asset ? GlassCard(`
+                        <div class="flex items-start gap-3">
+                            <div class="w-12 h-12 rounded-xl bg-red-500/20 flex items-center justify-center text-red-400"><i data-lucide="truck" width="20"></i></div>
+                            <div class="flex-1 min-w-0">
+                                <div class="flex items-center justify-between gap-2 mb-1">
+                                    <h3 class="font-bold truncate">${asset.description}</h3>
+                                    <span class="text-[11px] px-2 py-1 rounded-full border ${t.chip}">${asset.status}</span>
+                                </div>
+                                <p class="text-sm ${t.textSec}">Serienummer: <span class="font-mono ${t.textMain}">${asset.serial}</span></p>
+                                <p class="text-sm ${t.textSec}">Devicenummer: <span class="font-mono ${t.textMain}">${asset.device}</span></p>
+                                <p class="text-sm ${t.textSec}">Huidige locatie: <span class="font-mono ${t.textMain}">${asset.location}</span></p>
+                            </div>
+                        </div>
+                    `, 'mb-3') : GlassCard(`<p class="text-sm ${t.textSec}">Nog geen bekende machine geladen. Scan een serienummer of devicenummer om de actuele locatie te tonen.</p>`, 'mb-3')}
+
+                    <div class="flex-1 overflow-y-auto no-scrollbar pb-20 space-y-2">
+                        ${state.db.assets.slice(0, 6).map(assetItem => GlassCard(`
+                            <button onclick="window.prefillMove('${assetItem.serial}')" class="w-full text-left flex items-center gap-3">
+                                <div class="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center"><i data-lucide="scan-search" width="18"></i></div>
+                                <div class="min-w-0 flex-1">
+                                    <div class="font-bold text-sm truncate">${assetItem.serial}</div>
+                                    <div class="text-xs ${t.textSec}">${assetItem.location} • ${assetItem.device}</div>
+                                </div>
+                            </button>
+                        `)).join('')}
+                    </div>
+                    ${renderNav()}
+                </div>
+            `;
+        }
+
+        function renderTasks() {
+            const t = getTheme();
+            const form = state.forms.task;
+            const tasks = state.db.tasks;
+            return `
+                <div class="h-full flex flex-col px-4 pt-4 pb-2 overflow-hidden">
+                    <div class="flex items-center gap-3 mb-4">
+                        <button onclick="window.navigate('dashboard')" class="p-2 rounded-xl border ${t.chip}"><i data-lucide="arrow-left" width="18"></i></button>
+                        <div>
+                            <h1 class="text-lg font-bold ${t.textMain}">Opdrachten</h1>
+                            <p class="text-xs ${t.textSec}">Aanvragen van collega's voor verplaatsingen.</p>
+                        </div>
+                    </div>
+
+                    ${GlassCard(`
+                        <div class="space-y-3">
+                            <div class="flex items-center justify-between gap-2">
+                                <label class="text-xs uppercase tracking-[0.2em] ${t.textSec}">Nieuwe opdracht</label>
+                                <button onclick="window.openScanner('task-serial')" class="text-xs px-3 py-1 rounded-full border ${t.chip}">Scan serienummer</button>
+                            </div>
+                            <input value="${form.serial}" oninput="window.updateTaskField('serial', this.value)" placeholder="Serienummer" class="w-full rounded-xl border px-3 py-3 outline-none ${t.input}" />
+                            <div class="grid grid-cols-2 gap-3">
+                                <input value="${form.fromLocation}" oninput="window.updateTaskField('fromLocation', this.value)" placeholder="Van locatie" class="w-full rounded-xl border px-3 py-3 outline-none ${t.input}" />
+                                <input value="${form.toLocation}" oninput="window.updateTaskField('toLocation', this.value)" placeholder="Naar locatie" class="w-full rounded-xl border px-3 py-3 outline-none ${t.input}" />
+                            </div>
+                            <textarea oninput="window.updateTaskField('notes', this.value)" placeholder="Opmerking" class="w-full rounded-xl border px-3 py-3 outline-none min-h-[80px] ${t.input}">${form.notes}</textarea>
+                            ${Button('Opdracht aanmaken', 'window.submitTask()', 'primary', 'plus')}
+                        </div>
+                    `, 'mb-3')}
+
+                    <div class="flex-1 overflow-y-auto no-scrollbar pb-20 space-y-2">
+                        ${tasks.map(task => GlassCard(`
+                            <div class="flex items-start gap-3">
+                                <div class="w-10 h-10 rounded-xl flex items-center justify-center ${task.status === 'Open' ? 'bg-blue-500/20 text-blue-400' : 'bg-emerald-500/20 text-emerald-400'}">
+                                    <i data-lucide="${task.status === 'Open' ? 'clipboard-list' : 'check-circle-2'}" width="18"></i>
+                                </div>
+                                <div class="flex-1 min-w-0">
+                                    <div class="flex items-center justify-between gap-2 mb-1">
+                                        <h4 class="font-bold text-sm">${task.id}</h4>
+                                        <span class="text-[11px] px-2 py-1 rounded-full border ${t.chip}">${task.status}</span>
+                                    </div>
+                                    <p class="text-sm ${t.textMain} font-mono">${task.serial}</p>
+                                    <p class="text-xs ${t.textSec}">${task.fromLocation} → ${task.toLocation}</p>
+                                    <p class="text-xs ${t.textSec}">Aangevraagd door ${task.requester} • ${formatDateTime(task.createdAt)}</p>
+                                    ${task.notes ? `<p class="text-xs ${t.textSec} mt-1">${task.notes}</p>` : ''}
+                                    ${task.status === 'Open' ? `<div class="mt-3">${Button('Start verplaatsing', `window.useTask('${task.id}')`, 'secondary', 'arrow-right')}</div>` : ''}
+                                </div>
+                            </div>
+                        `)).join('')}
+                    </div>
+                    ${renderNav()}
+                </div>
+            `;
+        }
+
+        function renderReceive() {
+            const t = getTheme();
+            const form = state.forms.receipt;
+            const linkedAsset = getAssetBySerial(form.serial);
+            return `
+                <div class="h-full flex flex-col px-4 pt-4 pb-2 overflow-hidden">
+                    <div class="flex items-center gap-3 mb-4">
+                        <button onclick="window.navigate('dashboard')" class="p-2 rounded-xl border ${t.chip}"><i data-lucide="arrow-left" width="18"></i></button>
+                        <div>
+                            <h1 class="text-lg font-bold ${t.textMain}">Goederenontvangst</h1>
+                            <p class="text-xs ${t.textSec}">Pakbon en extern nummer koppelen aan device en serienummer.</p>
+                        </div>
+                    </div>
+
+                    ${GlassCard(`
+                        <div class="space-y-3">
+                            <input value="${form.receiptNumber}" oninput="window.updateReceiptField('receiptNumber', this.value)" placeholder="Pakbonnummer" class="w-full rounded-xl border px-3 py-3 outline-none ${t.input}" />
+                            <input value="${form.externalNumber}" oninput="window.updateReceiptField('externalNumber', this.value)" placeholder="Extern nummer" class="w-full rounded-xl border px-3 py-3 outline-none ${t.input}" />
+                            <div class="grid grid-cols-1 gap-3">
+                                <div>
+                                    <div class="flex items-center justify-between mb-2"><label class="text-xs uppercase tracking-[0.2em] ${t.textSec}">Serienummer</label><button onclick="window.openScanner('receipt-serial')" class="text-xs px-3 py-1 rounded-full border ${t.chip}">Scan</button></div>
+                                    <input value="${form.serial}" oninput="window.updateReceiptField('serial', this.value)" placeholder="Serienummer" class="w-full rounded-xl border px-3 py-3 outline-none ${t.input}" />
+                                </div>
+                                <div>
+                                    <div class="flex items-center justify-between mb-2"><label class="text-xs uppercase tracking-[0.2em] ${t.textSec}">Devicenummer</label><button onclick="window.openScanner('receipt-device')" class="text-xs px-3 py-1 rounded-full border ${t.chip}">Scan</button></div>
+                                    <input value="${form.device}" oninput="window.updateReceiptField('device', this.value)" placeholder="Devicenummer" class="w-full rounded-xl border px-3 py-3 outline-none ${t.input}" />
+                                </div>
+                                <div>
+                                    <div class="flex items-center justify-between mb-2"><label class="text-xs uppercase tracking-[0.2em] ${t.textSec}">Ontvangstlocatie</label><button onclick="window.openScanner('receipt-location')" class="text-xs px-3 py-1 rounded-full border ${t.chip}">Scan</button></div>
+                                    <input value="${form.location}" oninput="window.updateReceiptField('location', this.value)" placeholder="Bijv. INK-01" class="w-full rounded-xl border px-3 py-3 outline-none ${t.input}" />
+                                </div>
+                            </div>
+                            ${Button('Ontvangst registreren', 'window.submitReceipt()', 'success', 'package-check')}
+                        </div>
+                    `, 'mb-3')}
+
+                    ${linkedAsset ? GlassCard(`
+                        <p class="text-xs uppercase tracking-[0.2em] ${t.textSec} mb-2">Bekende machine</p>
+                        <h3 class="font-bold mb-1">${linkedAsset.description}</h3>
+                        <p class="text-sm ${t.textSec}">Huidige locatie: <span class="font-mono ${t.textMain}">${linkedAsset.location}</span></p>
+                        <p class="text-sm ${t.textSec}">Huidig device: <span class="font-mono ${t.textMain}">${linkedAsset.device}</span></p>
+                    `, 'mb-3') : GlassCard(`<p class="text-sm ${t.textSec}">Nog geen bestaand serienummer gevonden. Bij registreren wordt een nieuwe machine aangemaakt in de mockup.</p>`, 'mb-3')}
+
+                    <div class="flex-1 overflow-y-auto no-scrollbar pb-20 space-y-2">
+                        ${state.db.receipts.slice(0, 8).map(item => GlassCard(`
+                            <div class="flex items-start gap-3">
+                                <div class="w-10 h-10 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center"><i data-lucide="package-check" width="18"></i></div>
+                                <div class="flex-1 min-w-0">
+                                    <div class="font-bold text-sm">${item.serial}</div>
+                                    <div class="text-xs ${t.textSec}">${item.receiptNumber} • ${item.externalNumber}</div>
+                                    <div class="text-xs ${t.textSec}">${item.location} • ${formatDateTime(item.createdAt)}</div>
+                                </div>
+                            </div>
+                        `)).join('')}
+                    </div>
+                    ${renderNav()}
+                </div>
+            `;
+        }
+
+        function renderHistory() {
+            const t = getTheme();
+            return `
+                <div class="h-full flex flex-col px-4 pt-4 pb-2 overflow-hidden">
+                    <div class="flex items-center gap-3 mb-4">
+                        <button onclick="window.navigate('dashboard')" class="p-2 rounded-xl border ${t.chip}"><i data-lucide="arrow-left" width="18"></i></button>
+                        <div>
+                            <h1 class="text-lg font-bold ${t.textMain}">Historie</h1>
+                            <p class="text-xs ${t.textSec}">Laatste verplaatsingen en ontvangsten.</p>
+                        </div>
+                    </div>
+                    <div class="flex-1 overflow-y-auto no-scrollbar pb-20 space-y-2">
+                        ${state.db.history.map(item => GlassCard(`
+                            <div class="flex items-start gap-3">
+                                <div class="w-10 h-10 rounded-xl flex items-center justify-center ${item.type === 'move' ? 'bg-red-500/20 text-red-400' : 'bg-emerald-500/20 text-emerald-400'}">
+                                    <i data-lucide="${item.type === 'move' ? 'move-right' : 'package-check'}" width="18"></i>
+                                </div>
+                                <div class="flex-1 min-w-0">
+                                    <div class="flex items-center justify-between gap-2 mb-1">
+                                        <h4 class="font-bold text-sm">${item.serial}</h4>
+                                        <span class="text-[11px] ${t.textSec}">${formatDateTime(item.createdAt)}</span>
+                                    </div>
+                                    <p class="text-sm ${t.textSec}">${item.fromLocation} → <span class="font-mono ${t.textMain}">${item.toLocation}</span></p>
+                                    <p class="text-xs ${t.textSec}">Device ${item.device || '-'} • ${item.operator}</p>
+                                    ${item.note ? `<p class="text-xs ${t.textSec}">${item.note}</p>` : ''}
+                                </div>
+                            </div>
+                        `)).join('')}
+                    </div>
+                    ${renderNav()}
                 </div>
             `;
         }
@@ -1138,894 +668,206 @@
             const t = getTheme();
             return GlassCard(`
                 <div class="flex justify-around items-center">
-                    <button onclick="navigate('dashboard')" class="p-2 rounded-xl transition-colors ${state.view === 'dashboard' ? 'text-red-500 bg-red-500/10' : `${t.textSec} hover:${t.textMain}`}">
-                        <i data-lucide="box" width="20"></i>
-                    </button>
-                    <button onclick="navigate('asset-scan')" class="p-2 rounded-xl transition-colors ${state.view === 'asset-scan' ? 'text-red-500 bg-red-500/10' : `${t.textSec} hover:${t.textMain}`}">
-                        <i data-lucide="truck" width="20"></i>
-                    </button>
-                    <button onclick="toggleTheme()" class="p-2 rounded-xl transition-colors ${state.darkMode ? 'text-yellow-400 hover:bg-white/10' : 'text-slate-600 hover:bg-black/5'}">
-                        <i data-lucide="${state.darkMode ? 'sun' : 'moon'}" width="20"></i>
-                    </button>
+                    <button onclick="window.navigate('dashboard')" class="p-2 rounded-xl ${state.view === 'dashboard' ? 'text-red-500 bg-red-500/10' : t.textSec}"><i data-lucide="home" width="20"></i></button>
+                    <button onclick="window.navigate('move')" class="p-2 rounded-xl ${state.view === 'move' ? 'text-red-500 bg-red-500/10' : t.textSec}"><i data-lucide="move-right" width="20"></i></button>
+                    <button onclick="window.navigate('tasks')" class="p-2 rounded-xl ${state.view === 'tasks' ? 'text-red-500 bg-red-500/10' : t.textSec}"><i data-lucide="clipboard-list" width="20"></i></button>
+                    <button onclick="window.navigate('receive')" class="p-2 rounded-xl ${state.view === 'receive' ? 'text-red-500 bg-red-500/10' : t.textSec}"><i data-lucide="package-check" width="20"></i></button>
+                    <button onclick="window.navigate('history')" class="p-2 rounded-xl ${state.view === 'history' ? 'text-red-500 bg-red-500/10' : t.textSec}"><i data-lucide="history" width="20"></i></button>
                 </div>
-            `, null, `mt-0 !p-1.5 flex-none ${t.navGlass} !rounded-xl`);
-        }
-
-        function renderWmsNav() {
-            const t = getTheme();
-            const items = [
-                { view: 'dashboard', icon: 'layout-dashboard', label: 'Dashboard' },
-                { view: 'move', icon: 'move-right', label: 'Move' },
-                { view: 'tasks', icon: 'list-checks', label: 'Tasks' },
-                { view: 'receive', icon: 'inbox', label: 'Receive' },
-                { view: 'history', icon: 'history', label: 'History' },
-            ];
-            return GlassCard(`
-                <div class="grid grid-cols-5 gap-1">
-                    ${items.map(item => `
-                        <button onclick="navigateWms('${item.view}')" class="p-2 rounded-xl transition-colors flex flex-col items-center gap-1 ${state.wmsView === item.view ? 'text-red-500 bg-red-500/10' : `${t.textSec} hover:${t.textMain}`}">
-                            <i data-lucide="${item.icon}" width="18"></i>
-                            <span class="text-[10px] leading-none">${item.label}</span>
-                        </button>
-                    `).join('')}
-                </div>
-            `, null, `mt-0 !p-1.5 flex-none ${t.navGlass} !rounded-xl`);
+            `, `fixed bottom-3 left-4 right-4 max-w-md mx-auto !p-1.5 ${t.nav}`);
         }
 
         function renderScanner() {
             if (!state.showScanner) return '';
-            const contextLabelMap = {
-                picking: 'Pick-scan',
-                'asset-truck': 'Serial scan',
-                'asset-location': 'Location scan',
-                'move-serial': 'Serial scan',
-                'move-location': 'Location scan',
-                'receive-serial': 'Serial scan',
-                'receive-device': 'Device scan',
-                'receive-location': 'Location scan',
+            const labels = {
+                'move-serial': 'Scan serienummer of device',
+                'move-location': 'Scan doellocatie',
+                'task-serial': 'Scan serienummer voor opdracht',
+                'receipt-serial': 'Scan serienummer',
+                'receipt-device': 'Scan devicenummer',
+                'receipt-location': 'Scan ontvangstlocatie'
             };
-            const contextLabel = contextLabelMap[state.scannerContext] || 'Scan';
             return `
-                <div class="fixed inset-0 z-50 bg-black/95 flex flex-col items-center justify-center p-3 sm:p-4 animate-[fadeIn_0.2s_ease-out]">
-                    <div class="relative w-full h-full max-w-lg flex flex-col gap-3">
-                        <div class="rounded-2xl overflow-hidden border border-white/20 bg-black h-[48vh] sm:h-[56vh]">
-                            <div id="reader" class="w-full h-full bg-black object-cover"></div>
+                <div class="fixed inset-0 z-50 bg-black flex flex-col">
+                    <div class="p-4 flex items-center justify-between">
+                        <div>
+                            <h3 class="font-bold text-white">Scanner mockup</h3>
+                            <p class="text-sm text-white/60">${labels[state.scannerTarget] || 'Scan code'}</p>
                         </div>
-                        <div class="absolute inset-x-0 top-[9vh] pointer-events-none flex flex-col items-center justify-center">
-                             <div class="w-48 h-48 sm:w-56 sm:h-56 border-2 border-white/40 rounded-2xl relative">
-                                <div class="absolute inset-0 border-[26px] border-black/35 rounded-2xl"></div>
-                                <div class="absolute top-1/2 left-4 right-4 h-0.5 bg-red-500 shadow-[0_0_20px_rgba(239,68,68,0.8)] animate-[ping_1.5s_cubic-bezier(0,0,0.2,1)_infinite]"></div>
-                             </div>
-                             <div class="mt-4 bg-black/65 px-3 py-1.5 rounded-full backdrop-blur-md text-white font-mono text-xs">${contextLabel} · Richt op barcode</div>
-                        </div>
-                        <div class="rounded-2xl border border-white/15 bg-black/60 backdrop-blur-md p-3 space-y-2 pointer-events-auto">
-                            <p class="text-[11px] text-white/70 uppercase tracking-wider">${contextLabel} fallback</p>
-                            <div class="flex gap-2">
-                                <input type="text" value="${state.manualScanInput}" oninput="setManualScanInput(this.value)" onkeydown="if(event.key==='Enter'){submitScannerManualScan();}" placeholder="Typ gescande code" class="flex-1 bg-transparent border border-white/25 text-white placeholder:text-white/40 rounded-xl px-3 py-2 text-sm font-mono outline-none focus:border-red-500" />
-                                <button onclick="submitScannerManualScan()" class="px-3 py-2 rounded-xl text-xs font-semibold bg-red-600 text-white hover:bg-red-500 transition-colors">Gebruik code</button>
-                            </div>
-                            ${state.scannerOverlayFeedback ? `<div class="text-xs px-3 py-2 rounded-lg border ${state.scannerOverlayFeedback.status === 'success' ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-200' : 'bg-amber-500/10 border-amber-500/30 text-amber-200'}">${state.scannerOverlayFeedback.message}</div>` : ''}
-                            <button onclick="closeScanner()" class="w-full bg-white/15 backdrop-blur-md border border-white/20 text-white px-4 py-2 rounded-xl text-sm font-semibold shadow-lg active:scale-95 transition-transform">
-                                Sluiten
-                            </button>
+                        <button onclick="window.closeScanner()" class="p-2 rounded-xl bg-white/10 border border-white/15 text-white"><i data-lucide="x" width="18"></i></button>
+                    </div>
+                    <div class="px-4 pb-4">
+                        <div id="reader" class="h-72 rounded-3xl overflow-hidden bg-black border border-white/10"></div>
+                    </div>
+                    <div class="px-4 pb-6 space-y-3">
+                        <p class="text-xs uppercase tracking-[0.2em] text-white/60">Mock input</p>
+                        <div class="flex gap-2">
+                            <input value="${state.scannerManualValue}" oninput="window.updateScannerManual(this.value)" placeholder="Typ gescande code" class="flex-1 rounded-xl border border-white/15 bg-white/10 px-3 py-3 text-white outline-none placeholder:text-white/30" />
+                            <button onclick="window.confirmManualScan()" class="px-4 py-3 rounded-xl bg-red-600 text-white font-semibold">Gebruik</button>
                         </div>
                     </div>
                 </div>
             `;
         }
-        
-        // NIEUW: CONFIRMATION MODAL
-        function renderConfirmationModal() {
-            if (!state.showConfirmationModal || state.pickedItems.size === 0) return '';
-            
-            const t = getTheme();
-            const pickedCount = state.pickedItems.size;
-            const remainingCount = Math.max((state.pickItems.length || 0) - pickedCount, 0);
 
+        function renderFlash() {
+            if (!state.flash) return '';
+            const palette = state.flash.variant === 'warning'
+                ? 'bg-amber-500/15 border-amber-500/30 text-amber-100'
+                : 'bg-emerald-500/15 border-emerald-500/30 text-emerald-100';
             return `
-                <div id="confirmation-modal" class="fixed inset-0 z-50 flex items-center justify-center p-6 bg-black/50 backdrop-blur-sm modal-enter modal-enter-active">
-                    ${GlassCard(`
-                        <div class="flex flex-col gap-4">
-                            <h3 class="${t.textMain} text-xl font-bold">Bevestig Verplaatsing</h3>
-                            
-                            <p class="${t.textSec} text-sm">U staat op het punt **${pickedCount}** items te verplaatsen naar **${state.activeOrder.destination}**.</p>
-                            
-                            <ul class="space-y-1 ${t.textSec} text-sm">
-                                <li class="font-bold text-emerald-500 flex items-center gap-2"><i data-lucide="check-circle" width="16"></i> ${pickedCount} item(s) voltooid.</li>
-                                <li class="text-red-400 flex items-center gap-2"><i data-lucide="alert-triangle" width="16"></i> ${remainingCount} item(s) blijven over.</li>
-                            </ul>
-
-                            <div class="flex gap-3 mt-2">
-                                ${Button('Annuleren', 'closeConfirmationModal()', 'secondary', 'x', false)}
-                                ${Button('Bevestig & Verplaats', 'executePicking()', 'success', 'arrow-right')}
-                            </div>
-                        </div>
-                    `, null, 'p-6 !rounded-xl w-full max-w-sm')}
+                <div class="fixed top-4 left-4 right-4 z-50 max-w-md mx-auto">
+                    <div class="rounded-2xl border px-4 py-3 backdrop-blur-xl ${palette}">${state.flash.message}</div>
                 </div>
             `;
         }
 
-        // --- 5. HANDLERS ---
-        const normalizeInitialInput = (val) => (val || '').toUpperCase().replace(/[^A-Z]/g, '').slice(0, 4);
-        const isValidInitials = (value) => value.length >= 2 && value.length <= 4;
-        window.handleInput = (val) => {
-            state.loginInput = normalizeInitialInput(val);
+        function routeScanResult(rawValue) {
+            const value = normalizeCode(rawValue);
+            if (!value) return;
+            switch (state.scannerTarget) {
+                case 'move-serial':
+                    updateForm('move', 'serial', value);
+                    break;
+                case 'move-location':
+                    updateForm('move', 'toLocation', value);
+                    break;
+                case 'task-serial':
+                    updateForm('task', 'serial', value);
+                    const asset = getAssetBySerial(value);
+                    if (asset) updateForm('task', 'fromLocation', asset.location);
+                    break;
+                case 'receipt-serial':
+                    updateForm('receipt', 'serial', value);
+                    break;
+                case 'receipt-device':
+                    updateForm('receipt', 'device', value);
+                    break;
+                case 'receipt-location':
+                    updateForm('receipt', 'location', value);
+                    break;
+            }
+            closeScanner();
+        }
+
+        window.handleInitials = (value) => {
+            const initials = normalizeCode(value).slice(0, 4);
+            state.user = initials ? { initials } : null;
             render();
-            const i = document.querySelector('input');
-            if (i) {
-                i.focus();
-                i.setSelectionRange(i.value.length, i.value.length);
+        };
+
+        window.login = () => {
+            const initials = normalizeCode(state.user?.initials || '');
+            if (initials.length < 2 || initials.length > 4) {
+                setFlash('Gebruik 2 tot 4 initialen.', 'warning');
+                return;
             }
+            state.user = { initials };
+            setState({ user: state.user, view: 'dashboard' });
         };
-        window.handleLogin = () => {
-            const sanitizedInitials = normalizeInitialInput(state.loginInput);
-            if (isValidInitials(sanitizedInitials)) {
-                const nextView = state.appMode === 'wms-v1' ? 'wms-v1' : 'dashboard';
-                setState({ user: { initials: sanitizedInitials }, loginInput: sanitizedInitials, view: nextView, wmsView: 'dashboard' });
-                if (state.appMode !== 'wms-v1') {
-                    initializeOrderLineCounts();
-                }
-            }
+
+        window.logout = () => {
+            state.user = null;
+            state.view = 'login';
+            render();
         };
-        window.logout = () => setState({ user: null, view: 'login', loginInput: '', wmsView: 'dashboard' });
-        window.resetDemoData = () => {
-            resetWmsMockData();
-            setState({
-                wmsView: 'dashboard',
-                moveSearchInput: '',
-                moveDestinationInput: '',
-                moveSelectedAssetSerial: '',
-                activeMoveTaskId: null,
-                moveFeedback: { status: 'success', message: 'Demo mockdata is gereset naar de beginstand.' },
-                wmsScanFeedback: null,
-                taskForm: { serial: '', from: '', to: '', note: '', requestedBy: '' },
-                receiveForm: { deliveryNoteNumber: '', externalDocumentNumber: '', serial: '', deviceNumber: '', location: '' },
-            });
-        };
+
         window.navigate = (view) => setState({ view });
-        window.navigateWms = (view) => {
-            const allowed = ['login', 'dashboard', 'move', 'tasks', 'receive', 'history'];
-            if (allowed.includes(view)) {
-                setState({ wmsView: view, wmsScanInput: '', wmsScanFeedback: null });
-            }
-        };
-        window.setMoveSearchInput = (value) => {
-            setState({ moveSearchInput: value.toUpperCase(), moveFeedback: null, wmsScanFeedback: null });
-        };
-        window.setMoveDestinationInput = (value) => {
-            setState({ moveDestinationInput: value.toUpperCase(), moveFeedback: null, wmsScanFeedback: null });
-        };
-        window.lookupMoveAsset = () => {
-            const query = state.moveSearchInput || '';
-            const { matchedItems, matchedBy, normalizedCode } = findMatchingAssets(query, ASSETS);
+        window.toggleTheme = () => { state.darkMode = !state.darkMode; render(); };
+        window.updateMoveField = (field, value) => updateForm('move', field, value);
+        window.updateTaskField = (field, value) => updateForm('task', field, value);
+        window.updateReceiptField = (field, value) => updateForm('receipt', field, value);
+        window.updateScannerManual = (value) => { state.scannerManualValue = value; render(); };
+        window.prefillMove = (serial) => { updateForm('move', 'serial', serial); setState({ view: 'move' }); };
+        window.clearTaskLink = () => setState({ activeTaskId: null });
+        window.useTask = useTask;
+        window.resetMockData = resetMockData;
 
-            if (!normalizedCode) {
-                setState({ moveSelectedAssetSerial: '', moveFeedback: { status: 'warning', message: 'Scan of typ eerst een serienummer of device-nummer.' } });
+        window.submitMove = () => {
+            const form = state.forms.move;
+            const asset = getAssetByCode(form.serial);
+            if (!asset) {
+                setFlash('Machine niet gevonden op serienummer of devicenummer.', 'warning');
                 return;
             }
-
-            if (!matchedItems.length || matchedBy === 'location') {
-                setState({ moveSelectedAssetSerial: '', moveFeedback: { status: 'warning', message: `Geen asset gevonden voor code ${normalizedCode}.` } });
-                return;
-            }
-
-            const match = matchedItems[0];
-            setState({
-                moveSearchInput: match[matchedBy],
-                moveSelectedAssetSerial: match.serial,
-                moveFeedback: {
-                    status: 'success',
-                    message: `Asset ${match.serial} gevonden via ${matchedBy === 'serial' ? 'serienummer' : 'device-nummer'} op ${match.location}.`,
-                }
+            moveAsset({
+                serial: asset.serial,
+                toLocation: form.toLocation,
+                note: form.note,
+                source: state.activeTaskId ? `Opdracht ${state.activeTaskId}` : 'Directe verplaatsing',
+                linkedTaskId: state.activeTaskId
             });
         };
 
-        window.setWmsScanInput = (value) => {
-            setState({ wmsScanInput: value.toUpperCase(), wmsScanFeedback: null });
-        };
-        function processWmsScan(rawCode, context = state.wmsView) {
-            const assetResult = findMatchingAssets(rawCode, ASSETS);
-            const locationResult = findMatchingLocations(rawCode, KNOWN_LOCATIONS);
-            const normalizedCode = assetResult.normalizedCode || locationResult.normalizedCode;
+        window.submitTask = createTask;
+        window.submitReceipt = receiveAsset;
 
-            if (!normalizedCode) {
-                setState({ wmsScanFeedback: { status: 'warning', message: 'Scan bevat geen bruikbare code.' } });
-                return;
-            }
-
-            if (context === 'move') {
-                if (assetResult.matchedItems.length > 0 && assetResult.matchedBy !== 'location') {
-                    const asset = assetResult.matchedItems[0];
-                    setState({
-                        moveSearchInput: asset[assetResult.matchedBy],
-                        moveSelectedAssetSerial: asset.serial,
-                        moveFeedback: { status: 'success', message: `Asset ${asset.serial} geselecteerd via ${assetResult.matchedBy === 'serial' ? 'serienummer' : 'device-nummer'}.` },
-                        wmsScanFeedback: null,
-                    });
-                    return;
-                }
-
-                if (locationResult.matchedItems.length > 0) {
-                    const location = locationResult.matchedItems[0];
-                    setState({
-                        moveDestinationInput: location,
-                        moveFeedback: { status: 'success', message: `Doellocatie ingevuld: ${location}.` },
-                        wmsScanFeedback: null,
-                    });
-                    return;
-                }
-
-                setState({ moveFeedback: { status: 'warning', message: `Code ${normalizedCode} is geen bekende asset of locatie.` } });
-                return;
-            }
-
-            if (context === 'receive') {
-                const asset = assetResult.matchedItems[0];
-                const receipt = RECEIPTS.find(r => normalizeScanCode(r.serial) === normalizedCode);
-                if (asset && assetResult.matchedBy !== 'location') {
-                    setState({
-                        receiveForm: {
-                            ...state.receiveForm,
-                            serial: asset.serial,
-                            deviceNumber: asset.deviceNumber,
-                            location: asset.location,
-                        },
-                        wmsScanFeedback: { status: 'success', message: `Machine ${asset.serial} herkend. Serienummer is leidend en formulier is aangevuld.` },
-                    });
-                    return;
-                }
-                if (receipt) {
-                    setState({
-                        receiveForm: {
-                            deliveryNoteNumber: receipt.deliveryNoteNumber || '',
-                            externalDocumentNumber: receipt.externalDocumentNumber || '',
-                            serial: receipt.serial || '',
-                            deviceNumber: receipt.deviceNumber || '',
-                            location: receipt.dock || '',
-                        },
-                        wmsScanFeedback: { status: 'success', message: `Ontvangst ${receipt.id} geladen voor serial ${receipt.serial}.` },
-                    });
-                    return;
-                }
-                if (locationResult.matchedItems.length > 0) {
-                    setState({
-                        receiveForm: {
-                            ...state.receiveForm,
-                            location: locationResult.matchedItems[0],
-                        },
-                        wmsScanFeedback: { status: 'success', message: `Dock/locatie herkend: ${locationResult.matchedItems[0]}.` },
-                    });
-                    return;
-                }
-                setState({ wmsScanFeedback: { status: 'warning', message: `Geen ontvangstmatch voor code ${normalizedCode}.` } });
-                return;
-            }
-
-            if (context === 'tasks') {
-                const openTasks = getOpenMoveTasks();
-                const taskBySerial = openTasks.find(task => normalizeScanCode(task.serial) === normalizedCode);
-                const taskByLocation = openTasks.find(task => normalizeScanCode(task.to) === normalizedCode || normalizeScanCode(task.from) === normalizedCode);
-                if (taskBySerial) {
-                    setState({ wmsScanFeedback: { status: 'success', message: `Opdracht ${taskBySerial.id} gevonden voor serial ${taskBySerial.serial}.` } });
-                    return;
-                }
-                if (taskByLocation) {
-                    setState({ wmsScanFeedback: { status: 'success', message: `Opdracht ${taskByLocation.id} gevonden voor locatie ${taskByLocation.from} → ${taskByLocation.to}.` } });
-                    return;
-                }
-                setState({ wmsScanFeedback: { status: 'warning', message: `Geen open opdracht voor code ${normalizedCode}.` } });
-            }
-        }
-        window.submitWmsScan = (context = state.wmsView) => {
-            const code = state.wmsScanInput || '';
-            processWmsScan(code, context);
-            setState({ wmsScanInput: '' });
-        };
-        window.updateTaskForm = (field, value) => {
-            if (!['serial', 'from', 'to', 'note', 'requestedBy'].includes(field)) return;
-            const shouldUppercase = ['serial', 'from', 'to', 'requestedBy'].includes(field);
-            setState({
-                taskForm: {
-                    ...state.taskForm,
-                    [field]: shouldUppercase ? value.toUpperCase() : value,
-                },
-                wmsScanFeedback: null,
+        function startCamera() {
+            const reader = new Html5Qrcode('reader');
+            state.html5QrCode = reader;
+            reader.start(
+                { facingMode: 'environment' },
+                { fps: 10, qrbox: { width: 240, height: 240 } },
+                (decodedText) => routeScanResult(decodedText),
+                () => {}
+            ).catch(() => {
+                setFlash('Camera start niet. Gebruik mock input onderaan.', 'warning');
             });
-        };
-        window.updateReceiveForm = (field, value) => {
-            if (!['deliveryNoteNumber', 'externalDocumentNumber', 'serial', 'deviceNumber', 'location'].includes(field)) return;
-            setState({
-                receiveForm: {
-                    ...state.receiveForm,
-                    [field]: value.toUpperCase(),
-                },
-                wmsScanFeedback: null,
-            });
-        };
-        window.submitReceiveForm = () => {
-            const deliveryNoteNumber = (state.receiveForm.deliveryNoteNumber || '').trim().toUpperCase();
-            const externalDocumentNumber = (state.receiveForm.externalDocumentNumber || '').trim().toUpperCase();
-            const serial = (state.receiveForm.serial || '').trim().toUpperCase();
-            const deviceNumber = (state.receiveForm.deviceNumber || '').trim().toUpperCase();
-            const location = (state.receiveForm.location || '').trim().toUpperCase();
-
-            if (!serial || !deliveryNoteNumber || !externalDocumentNumber || !deviceNumber || !location) {
-                setState({ wmsScanFeedback: { status: 'warning', message: 'Vul pakbonnummer, extern nummer, serienummer, devicenummer en ontvangstlocatie in.' } });
-                return;
-            }
-
-            const now = new Date().toISOString();
-            const actor = state.user?.initials || 'SYS';
-            const existingAssetIndex = ASSETS.findIndex(asset => normalizeScanCode(asset.serial) === normalizeScanCode(serial));
-            const existingAsset = existingAssetIndex !== -1 ? ASSETS[existingAssetIndex] : null;
-            const previousLocation = existingAsset?.location || '-';
-            const isNewAsset = !existingAsset;
-
-            if (existingAsset) {
-                ASSETS[existingAssetIndex] = {
-                    ...existingAsset,
-                    deviceNumber,
-                    location,
-                    status: 'receiving',
-                    updatedAt: now,
-                };
-            } else {
-                ASSETS.unshift({
-                    serial,
-                    deviceNumber,
-                    description: 'Nieuwe asset via goederenontvangst',
-                    location,
-                    status: 'receiving',
-                    updatedAt: now,
-                });
-            }
-
-            const receiptId = `RCV-${now.slice(2, 10).replace(/-/g, '')}-${String(RECEIPTS.length + 1).padStart(3, '0')}`;
-            RECEIPTS.unshift({
-                id: receiptId,
-                serial,
-                deviceNumber,
-                deliveryNoteNumber,
-                externalDocumentNumber,
-                dock: location,
-                supplier: 'Onbekend / handmatig',
-                status: 'received',
-                receivedAt: now,
-            });
-
-            MOVE_TRANSACTIONS.unshift({
-                id: `LOG-${Date.now()}`,
-                type: 'receipt',
-                serial,
-                deviceNumber,
-                from: previousLocation,
-                to: location,
-                operator: actor,
-                timestamp: now,
-                note: isNewAsset ? 'Nieuwe asset ontvangen' : 'Ontvangst verwerkt',
-            });
-            persistWmsData();
-
-            setState({
-                receiveForm: { deliveryNoteNumber: '', externalDocumentNumber: '', serial: '', deviceNumber: '', location: '' },
-                moveSelectedAssetSerial: serial,
-                wmsScanFeedback: {
-                    status: 'success',
-                    message: isNewAsset
-                        ? `Ontvangst ${receiptId} geregistreerd. Nieuwe asset ${serial} toegevoegd op ${location}.`
-                        : `Ontvangst ${receiptId} geregistreerd. Asset ${serial} bijgewerkt naar ${location}.`,
-                },
-            });
-        };
-        window.createMoveTask = () => {
-            const serial = (state.taskForm.serial || '').trim().toUpperCase();
-            const from = (state.taskForm.from || '').trim().toUpperCase();
-            const to = (state.taskForm.to || '').trim().toUpperCase();
-            const note = (state.taskForm.note || '').trim();
-            const requestedBy = (state.taskForm.requestedBy || '').trim().toUpperCase();
-            if (!serial || !from || !to || !requestedBy) {
-                setState({ wmsScanFeedback: { status: 'warning', message: 'Vul serienummer, van-locatie, naar-locatie en aanvrager in.' } });
-                return;
-            }
-            const id = `MOVE-${new Date().toISOString().slice(2, 10).replace(/-/g, '')}-${String(MOVE_REQUESTS.length + 1).padStart(3, '0')}`;
-            MOVE_REQUESTS.unshift({
-                id,
-                serial,
-                from,
-                to,
-                note,
-                requestedBy,
-                priority: 'normal',
-                status: 'open',
-                createdAt: new Date().toISOString(),
-                completedAt: null,
-            });
-            persistWmsData();
-            setState({
-                taskForm: { serial: '', from: '', to: '', note: '', requestedBy: '' },
-                wmsScanFeedback: { status: 'success', message: `Opdracht ${id} aangemaakt.` },
-            });
-        };
-        window.startMoveFromTask = (taskId) => {
-            const task = MOVE_REQUESTS.find(item => item.id === taskId && item.status === 'open');
-            if (!task) {
-                setState({ wmsScanFeedback: { status: 'warning', message: `Opdracht ${taskId} is niet meer open.` } });
-                return;
-            }
-            setState({
-                wmsView: 'move',
-                moveSearchInput: task.serial,
-                moveDestinationInput: task.to,
-                moveSelectedAssetSerial: task.serial,
-                activeMoveTaskId: task.id,
-                moveFeedback: { status: 'success', message: `Opdracht ${task.id} gestart. Controleer asset en bevestig verplaatsing.` },
-                wmsScanFeedback: null,
-            });
-        };
-
-        window.confirmMoveAsset = () => {
-            const rawDestination = state.moveDestinationInput || '';
-            const { matchedItems: matchedLocations, normalizedCode } = findMatchingLocations(rawDestination, KNOWN_LOCATIONS);
-            const destination = matchedLocations[0] || '';
-            const selectedIndex = ASSETS.findIndex(asset => asset.serial === state.moveSelectedAssetSerial);
-            if (selectedIndex === -1) {
-                setState({ moveFeedback: { status: 'warning', message: 'Selecteer eerst een asset via serienummer of device-nummer.' } });
-                return;
-            }
-            if (!normalizedCode) {
-                setState({ moveFeedback: { status: 'warning', message: 'Doellocatie ontbreekt. Scan of typ een locatie.' } });
-                return;
-            }
-            if (!destination) {
-                setState({ moveFeedback: { status: 'warning', message: `Onbekende locatiecode ${normalizedCode}.` } });
-                return;
-            }
-
-            const selectedAsset = ASSETS[selectedIndex];
-            const fromLocation = selectedAsset.location;
-            const now = new Date().toISOString();
-            ASSETS[selectedIndex] = {
-                ...selectedAsset,
-                location: destination,
-                updatedAt: now,
-                status: 'available',
-            };
-
-            const historyEntry = {
-                id: `LOG-${Date.now()}`,
-                type: 'move',
-                serial: selectedAsset.serial,
-                deviceNumber: selectedAsset.deviceNumber,
-                from: fromLocation,
-                to: destination,
-                operator: state.user?.initials || 'SYS',
-                timestamp: now,
-                note: state.activeMoveTaskId ? `Verplaatsing vanuit opdracht ${state.activeMoveTaskId}` : 'Verplaatsing bevestigd',
-            };
-            MOVE_TRANSACTIONS.unshift(historyEntry);
-
-            if (state.activeMoveTaskId) {
-                const taskIndex = MOVE_REQUESTS.findIndex(task => task.id === state.activeMoveTaskId && task.status === 'open');
-                if (taskIndex !== -1) {
-                    MOVE_REQUESTS[taskIndex] = {
-                        ...MOVE_REQUESTS[taskIndex],
-                        status: 'completed',
-                        completedAt: now,
-                    };
-                }
-            }
-            persistWmsData();
-
-            setState({
-                moveDestinationInput: '',
-                moveSearchInput: '',
-                moveSelectedAssetSerial: selectedAsset.serial,
-                activeMoveTaskId: null,
-                moveFeedback: {
-                    status: 'success',
-                    message: `Verplaatsing bevestigd: ${selectedAsset.serial} van ${fromLocation} naar ${destination}.`,
-                }
-            });
-        };
-        window.setAppMode = (mode) => {
-            const allowed = ['orderflow', 'wms-v1'];
-            if (allowed.includes(mode)) {
-                setState({ appMode: mode });
-            }
-        };
-        window.toggleTheme = () => {
-            const nextDarkMode = !state.darkMode;
-            setState({ darkMode: nextDarkMode });
-        };
-        window.setSortOption = (option) => {
-            const allowed = ['priority', 'destination', 'createdAt'];
-            if (allowed.includes(option)) {
-                setState({ sortOption: option });
-            }
-        };
-        window.handlePickSearch = (value) => setState({ pickSearchTerm: value });
-        window.setPickSortOption = (option) => {
-            const allowed = ['default', 'name', 'location', 'sku'];
-            if (allowed.includes(option)) {
-                setState({ pickSortOption: option });
-            }
-        };
-        window.openOrder = (id) => {
-            const order = MOCK_ORDERS.find(x => x.id === id);
-            if (!order) return;
-
-            setState({
-                activeOrder: order,
-                view: 'picking',
-                pickedItems: new Set(),
-                pickSearchTerm: '',
-                pickSortOption: 'default',
-                isEditingDestination: false,
-                scanFeedback: null,
-                orderLineError: null,
-            });
-
-            loadOrderLines(order.id);
-        };
-        window.togglePickItem = (id) => { const s = new Set(state.pickedItems); if(s.has(id))s.delete(id);else s.add(id); setState({ pickedItems: s }); };
-        window.setManualScanInput = (value) => { setState({ manualScanInput: value }); };
-        window.submitManualScan = () => {
-            const code = state.manualScanInput.trim();
-            if (!code) return;
-            processPickingScan(code);
-            setState({ manualScanInput: '' });
-            setTimeout(() => {
-                const input = document.getElementById('manual-scan-input');
-                if (input) input.focus();
-            }, 0);
-        };
-
-        function processPickingScan(rawCode) {
-            const { matchedItems, matchedBy, normalizedCode } = findMatchingItems(rawCode, state.pickItems || []);
-
-            if (!normalizedCode) {
-                return;
-            }
-
-            const pickList = state.pickItems || [];
-
-            if (pickList.length === 0) {
-                setState({ scanFeedback: { status: 'warning', message: 'Geen picklijst geladen voor deze order.' } });
-                return;
-            }
-
-            if (matchedItems.length > 0) {
-                const updatedSet = new Set(state.pickedItems);
-                const newlyPicked = [];
-                const alreadyPicked = [];
-
-                matchedItems.forEach((item) => {
-                    if (updatedSet.has(item.id)) {
-                        alreadyPicked.push(item.id);
-                    } else {
-                        newlyPicked.push(item.id);
-                        updatedSet.add(item.id);
-                    }
-                });
-
-                const locationContext = matchedBy === 'location'
-                    ? `Locatie ${matchedItems[0].location}`
-                    : `SKU ${matchedItems.map(i => i.id).join(', ')}`;
-                const actionMessage = newlyPicked.length > 0
-                    ? `${locationContext}: ${newlyPicked.length} ${newlyPicked.length === 1 ? 'item' : 'items'} toegevoegd aan selectie`
-                    : `${locationContext} was al geselecteerd`;
-
-                setState({
-                    pickedItems: updatedSet,
-                    scanFeedback: {
-                        status: 'success',
-                        message: actionMessage
-                    }
-                });
-            } else {
-                setState({
-                    scanFeedback: {
-                        status: 'warning',
-                        message: `Code ${normalizedCode} hoort niet bij de actieve picklijst. Controleer SKU of locatie en probeer opnieuw.`
-                    }
-                });
-            }
         }
 
-        // --- HANDLERS VOOR MODAL ---
-        window.openConfirmationModal = () => {
-            if (state.pickedItems.size > 0) {
-                setState({ showConfirmationModal: true });
-            }
-        };
-
-        window.closeConfirmationModal = () => {
-            setState({ showConfirmationModal: false });
-        };
-
-        window.executePicking = () => {
-            const currentLines = state.pickItems || [];
-            const itemsToKeep = currentLines.filter(item => !state.pickedItems.has(item.id));
-            const count = state.pickedItems.size;
-
-            const totalItems = currentLines.length;
-            const remainingItems = Math.max(totalItems - count, 0);
-            const newStatus = remainingItems === 0 ? 'completed' : (remainingItems < totalItems ? 'partial' : 'pending');
-            const updatedOrder = state.activeOrder ? { ...state.activeOrder, items: remainingItems, totalItems: totalItems, status: newStatus } : null;
-
-            if (updatedOrder) {
-                const orderIndex = MOCK_ORDERS.findIndex(o => o.id === updatedOrder.id);
-
-                if (newStatus === 'completed') {
-                    if (orderIndex !== -1) {
-                        MOCK_ORDERS.splice(orderIndex, 1);
-                    }
-                    ARCHIVED_ORDERS.push(updatedOrder);
-                } else if (orderIndex !== -1) {
-                    MOCK_ORDERS[orderIndex] = updatedOrder;
-                }
-            }
-
-            let updatedOrderLineMap = { ...state.orderLineMap };
-            let updatedOrderLineState = { ...state.orderLineState };
-
-            if (updatedOrder?.id) {
-                if (newStatus === 'completed') {
-                    const { [updatedOrder.id]: _, ...rest } = updatedOrderLineMap;
-                    updatedOrderLineMap = rest;
-                    const { [updatedOrder.id]: __, ...restState } = updatedOrderLineState;
-                    updatedOrderLineState = restState;
-                } else {
-                    updatedOrderLineMap = { ...updatedOrderLineMap, [updatedOrder.id]: itemsToKeep };
-                    updatedOrderLineState = {
-                        ...updatedOrderLineState,
-                        [updatedOrder.id]: {
-                            totalLines: totalItems,
-                            remainingLines: remainingItems,
-                        },
-                    };
-                }
-            }
-
-            const newPicks = Math.min(60, Math.max(30, state.stats.picksPerHour + (Math.random() > 0.5 ? 1 : -1)));
-
-            setState({
-                view: itemsToKeep.length > 0 ? 'picking' : 'dashboard',
-                activeOrder: newStatus === 'completed' ? null : updatedOrder,
-                pickedItems: new Set(),
-                pickItems: itemsToKeep,
-                showConfirmationModal: false,
-                stats: {
-                    ...state.stats,
-                    picksPerHour: newPicks,
-                    totalPicksShift: state.stats.totalPicksShift + count
-                },
-                orderLineMap: updatedOrderLineMap,
-                orderLineState: updatedOrderLineState,
-            });
-            // We blijven op de picking pagina als er nog items zijn (Partial Pick), anders terug naar dashboard
-            if (itemsToKeep.length === 0) {
-                setTimeout(() => alert(`Order ${state.activeOrder?.id || ''} voltooid!`), 100);
-            }
-        };
-        // --- EINDE MODAL HANDLERS ---
-
-        // HANDLERS VOOR DESTINATION WIJZIGEN
-        window.toggleEditDestination = () => {
-            const isEditing = state.isEditingDestination;
-            if (!isEditing) {
-                const suggestions = KNOWN_LOCATIONS.slice(0, 6);
-                setState({
-                    isEditingDestination: true,
-                    newDestinationInput: state.activeOrder.destination || '',
-                    destinationSuggestions: suggestions,
-                    destinationError: null,
-                });
-            } else {
-                setState({ isEditingDestination: false, newDestinationInput: '', destinationSuggestions: [], destinationError: null });
-            }
-        };
-
-        window.setNewDestinationInput = (value) => {
-            const normalized = value.toUpperCase();
-            const suggestions = KNOWN_LOCATIONS.filter(loc => loc.includes(normalized)).slice(0, 6);
-            setState({ newDestinationInput: normalized, destinationSuggestions: suggestions, destinationError: null });
-            setTimeout(() => {
-                const input = document.getElementById('destination-input');
-                if (input) {
-                    input.focus();
-                    input.value = state.newDestinationInput;
-                    input.setSelectionRange(input.value.length, input.value.length);
-                }
-            }, 0);
-        };
-
-        window.applyDestinationSuggestion = (location) => {
-            const suggestions = KNOWN_LOCATIONS.filter(loc => loc.includes(location)).slice(0, 6);
-            setState({ newDestinationInput: location, destinationSuggestions: suggestions, destinationError: null });
-            setTimeout(() => {
-                const input = document.getElementById('destination-input');
-                if (input) {
-                    input.focus();
-                    input.value = state.newDestinationInput;
-                    input.setSelectionRange(input.value.length, input.value.length);
-                }
-            }, 0);
-        };
-
-        window.saveDestination = () => {
-            const candidate = state.newDestinationInput.trim();
-            if (!candidate) {
-                setState({ destinationError: 'Voer een locatie in.' });
-                return;
-            }
-
-            const isKnownLocation = KNOWN_LOCATIONS.includes(candidate);
-            if (!isKnownLocation) {
-                setState({ destinationError: 'Onbekende locatiecode. Kies een bestaande code of gebruik een suggestie.' });
-                return;
-            }
-
-            const updatedDestination = candidate;
-            const updatedOrder = { ...state.activeOrder, destination: updatedDestination };
-
-            const orderIndex = MOCK_ORDERS.findIndex(o => o.id === updatedOrder.id);
-            if (orderIndex !== -1) {
-                MOCK_ORDERS[orderIndex] = updatedOrder;
-            }
-
-            setState({
-                activeOrder: updatedOrder,
-                isEditingDestination: false,
-                newDestinationInput: '',
-                destinationSuggestions: [],
-                destinationError: null,
-            });
-        };
-        
-        window.resetLoc = () => setState({ scanStep: 1, scannedData: { ...state.scannedData, location: '' } });
-        window.confirmAssetLink = () => { setState({ scanStep: 3 }); setTimeout(() => { setState({ scanStep: 0, scannedData: { truck: '', location: '' } }); }, 2500); };
-
-        // --- REAL CAMERA LOGIC ---
-        
-        window.openScanner = (context = null) => {
-            setState({ showScanner: true, scannerContext: context, scannerOverlayFeedback: null, manualScanInput: '' });
-            setTimeout(() => {
-                const html5QrCode = new Html5Qrcode("reader");
-                state.html5QrCode = html5QrCode;
-                const config = { fps: 10, qrbox: { width: 220, height: 220 } };
-                html5QrCode.start({ facingMode: "environment" }, config, onScanSuccess, onScanFailure)
-                .catch(err => {
-                    console.error("Camera start failed", err);
-                    setState({
-                        html5QrCode: null,
-                        scannerOverlayFeedback: {
-                            status: 'warning',
-                            message: 'Camera start niet (pc of permissie). Gebruik handmatige invoer: "typ gescande code".'
-                        }
-                    });
-                });
-            }, 100);
-        };
-
-        window.closeScanner = () => {
+        function closeScanner() {
             if (state.html5QrCode) {
                 state.html5QrCode.stop().then(() => {
                     state.html5QrCode.clear();
-                    setState({ showScanner: false, html5QrCode: null, scannerContext: null, scannerOverlayFeedback: null, manualScanInput: '' });
-                }).catch(err => {
-                    console.log("Stop failed", err);
-                    setState({ showScanner: false, html5QrCode: null, scannerContext: null, scannerOverlayFeedback: null, manualScanInput: '' });
+                    state.html5QrCode = null;
+                    state.showScanner = false;
+                    state.scannerTarget = null;
+                    state.scannerManualValue = '';
+                    render();
+                }).catch(() => {
+                    state.html5QrCode = null;
+                    state.showScanner = false;
+                    state.scannerTarget = null;
+                    state.scannerManualValue = '';
+                    render();
                 });
-            } else {
-                setState({ showScanner: false, scannerContext: null, scannerOverlayFeedback: null, manualScanInput: '' });
+                return;
             }
+            state.showScanner = false;
+            state.scannerTarget = null;
+            state.scannerManualValue = '';
+            render();
+        }
+
+        window.closeScanner = closeScanner;
+        window.openScanner = (target) => {
+            state.showScanner = true;
+            state.scannerTarget = target;
+            state.scannerManualValue = '';
+            render();
+            setTimeout(startCamera, 120);
         };
-
-        window.submitScannerManualScan = () => {
-            const value = (state.manualScanInput || '').trim();
-            if (!value) {
-                setState({ scannerOverlayFeedback: { status: 'warning', message: 'Voer eerst een code in.' } });
-                return;
-            }
-            handleRealScan(value, state.scannerContext);
-        };
-
-        function onScanSuccess(decodedText, decodedResult) {
-            if (state.html5QrCode) {
-                state.html5QrCode.stop().then(() => {
-                    state.html5QrCode.clear();
-                    handleRealScan(decodedText);
-                });
-            }
-        }
-        
-        function onScanFailure(error) {}
-
-        function handleRealScan(result, context = state.scannerContext) {
-            setState({ showScanner: false, html5QrCode: null, scannerContext: null, scannerOverlayFeedback: null, manualScanInput: '' });
-
-            if (context === 'asset-truck' || (state.view === 'asset-scan' && state.scanStep === 0 && context !== 'picking')) {
-                setState({ scannedData: { ...state.scannedData, truck: result }, scanStep: 1 });
-                return;
-            }
-
-            if (context === 'asset-location' || (state.view === 'asset-scan' && state.scanStep === 1 && context !== 'picking')) {
-                setState({ scannedData: { ...state.scannedData, location: result }, scanStep: 2 });
-                return;
-            }
-
-            if (context === 'move-serial') {
-                setState({ moveSearchInput: result.toUpperCase() });
-                setTimeout(() => window.lookupMoveAsset(), 0);
-                return;
-            }
-
-            if (context === 'move-location') {
-                setState({ moveDestinationInput: result.toUpperCase(), moveFeedback: null });
-                return;
-            }
-
-            if (context === 'receive-serial') {
-                window.updateReceiveForm('serial', result);
-                return;
-            }
-
-            if (context === 'receive-device') {
-                window.updateReceiveForm('deviceNumber', result);
-                return;
-            }
-
-            if (context === 'receive-location') {
-                window.updateReceiveForm('location', result);
-                return;
-            }
-
-            if (state.view === 'picking' || context === 'picking') {
-                processPickingScan(result);
-            } else if (state.appMode === 'wms-v1' && ['move', 'receive', 'tasks'].includes(state.wmsView)) {
-                processWmsScan(result, state.wmsView);
-            } else {
-                alert(`Gescand: ${result}`);
-            }
-        }
-
-        // --- SCROLL LOGIC ---
-        function attachScrollListener() {
-            const container = document.getElementById('scroll-container');
-            const header = document.getElementById('dashboard-view'); 
-            const headerInner = document.getElementById('dashboard-header');
-            
-            if (container && header) {
-                container.addEventListener('scroll', (e) => {
-                    const isScrolled = e.target.scrollTop > 20;
-                    if (isScrolled) {
-                        header.classList.add('is-scrolled');
-                         headerInner.classList.add(state.darkMode ? 'bg-black/40' : 'bg-white/60', 'backdrop-blur-xl', 'border-white/5');
-                    } else {
-                        header.classList.remove('is-scrolled');
-                        headerInner.classList.remove('bg-black/40', 'bg-white/60', 'backdrop-blur-xl', 'border-white/5');
-                    }
-                });
-            }
-        }
+        window.confirmManualScan = () => routeScanResult(state.scannerManualValue);
 
         function render() {
+            syncBodyTheme();
             const app = document.getElementById('app');
             let html = '';
-            switch (state.view) {
-                case 'login': html = renderLogin(); break;
-                case 'dashboard': html = renderDashboard(); break;
-                case 'picking': html = renderPicking(); break;
-                case 'asset-scan': html = renderAssetScan(); break;
-                case 'wms-v1': html = renderWmsShell(); break;
+            if (!state.user || state.view === 'login') {
+                html = renderLogin();
+            } else if (state.view === 'dashboard') {
+                html = renderDashboard();
+            } else if (state.view === 'move') {
+                html = renderMove();
+            } else if (state.view === 'tasks') {
+                html = renderTasks();
+            } else if (state.view === 'receive') {
+                html = renderReceive();
+            } else if (state.view === 'history') {
+                html = renderHistory();
             }
-            html += renderScanner();
-            html += renderConfirmationModal(); // Render modal bovenop alles
-            app.innerHTML = html;
-            syncBodyTheme();
+            app.innerHTML = html + renderScanner() + renderFlash();
             lucide.createIcons();
-            attachScrollListener();
         }
 
         render();
