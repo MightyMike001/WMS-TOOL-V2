@@ -153,8 +153,8 @@
         ];
 
         const MOCK_RECEIPTS = [
-            { id: 'RCV-260423-014', serial: 'H2X386Y00013', dock: 'INK-01', supplier: 'Linde Parts Benelux', status: 'inbound', receivedAt: '2026-04-23T06:42:00Z' },
-            { id: 'RCV-260423-015', serial: 'H2X386Y00015', dock: 'INK-02', supplier: 'Hydro Systems BV', status: 'quality-check', receivedAt: '2026-04-23T07:58:00Z' },
+            { id: 'RCV-260423-014', serial: 'H2X386Y00013', deviceNumber: 'TRK-227', pakbonNumber: 'PKB-2026-1145', externalNumber: 'EXT-908771', dock: 'INK-01', supplier: 'Linde Parts Benelux', status: 'inbound', receivedAt: '2026-04-23T06:42:00Z' },
+            { id: 'RCV-260423-015', serial: 'H2X386Y00015', deviceNumber: 'TRK-245', pakbonNumber: 'PKB-2026-1146', externalNumber: 'EXT-908772', dock: 'INK-02', supplier: 'Hydro Systems BV', status: 'quality-check', receivedAt: '2026-04-23T07:58:00Z' },
         ];
 
         const MOCK_HISTORY_LOG = [
@@ -212,6 +212,13 @@
                 to: '',
                 note: '',
                 requester: '',
+            },
+            receiveForm: {
+                pakbonNumber: '',
+                externalNumber: '',
+                serial: '',
+                deviceNumber: '',
+                location: '',
             },
             activeMoveTaskId: null,
         };
@@ -651,14 +658,33 @@
             }
 
             if (state.wmsView === 'receive') {
+                const canSubmitReceipt = Boolean(
+                    state.receiveForm.serial.trim() &&
+                    state.receiveForm.pakbonNumber.trim() &&
+                    state.receiveForm.externalNumber.trim() &&
+                    state.receiveForm.deviceNumber.trim() &&
+                    state.receiveForm.location.trim()
+                );
                 return `
-                    <p class="${t.textSec} text-xs uppercase tracking-widest mb-2">Ontvangsten</p>
+                    <p class="${t.textSec} text-xs uppercase tracking-widest mb-2">Goederenontvangst</p>
                     <div class="p-3 rounded-xl border ${state.darkMode ? 'border-white/10 bg-white/5' : 'border-slate-200 bg-white'} mb-2">
-                        <p class="${t.textSec} text-[10px] uppercase tracking-widest mb-1">Scan ontvangst / serial / dock</p>
+                        <p class="${t.textSec} text-[10px] uppercase tracking-widest mb-1">Scan serial / device / locatie</p>
                         <div class="flex gap-2">
                             <input type="text" value="${state.wmsScanInput}" oninput="setWmsScanInput(this.value)" placeholder="Scan of typ code" class="w-full bg-transparent border rounded-xl px-3 py-2 text-sm font-mono outline-none ${state.darkMode ? 'border-white/20 text-white placeholder:text-white/30 focus:border-red-400' : 'border-slate-300 text-slate-900 placeholder:text-slate-400 focus:border-red-500'}" />
                             <button onclick="submitWmsScan('receive')" class="px-3 rounded-xl border text-xs font-semibold ${state.darkMode ? 'border-white/20 bg-white/10 hover:bg-white/15' : 'border-slate-300 bg-slate-100 hover:bg-slate-200'}">Verwerk</button>
                         </div>
+                    </div>
+                    <div class="p-3 rounded-xl border ${state.darkMode ? 'border-white/10 bg-white/5' : 'border-slate-200 bg-white'} mb-2">
+                        <p class="${t.textSec} text-[10px] uppercase tracking-widest mb-2">Ontvangstformulier</p>
+                        <div class="grid grid-cols-1 gap-2">
+                            <input type="text" value="${state.receiveForm.pakbonNumber}" oninput="updateReceiveForm('pakbonNumber', this.value)" placeholder="pakbonnummer" class="w-full bg-transparent border rounded-xl px-3 py-2 text-sm font-mono outline-none ${state.darkMode ? 'border-white/20 text-white placeholder:text-white/30 focus:border-red-400' : 'border-slate-300 text-slate-900 placeholder:text-slate-400 focus:border-red-500'}" />
+                            <input type="text" value="${state.receiveForm.externalNumber}" oninput="updateReceiveForm('externalNumber', this.value)" placeholder="extern nummer" class="w-full bg-transparent border rounded-xl px-3 py-2 text-sm font-mono outline-none ${state.darkMode ? 'border-white/20 text-white placeholder:text-white/30 focus:border-red-400' : 'border-slate-300 text-slate-900 placeholder:text-slate-400 focus:border-red-500'}" />
+                            <input type="text" value="${state.receiveForm.serial}" oninput="updateReceiveForm('serial', this.value)" placeholder="serienummer" class="w-full bg-transparent border rounded-xl px-3 py-2 text-sm font-mono outline-none ${state.darkMode ? 'border-white/20 text-white placeholder:text-white/30 focus:border-red-400' : 'border-slate-300 text-slate-900 placeholder:text-slate-400 focus:border-red-500'}" />
+                            <input type="text" value="${state.receiveForm.deviceNumber}" oninput="updateReceiveForm('deviceNumber', this.value)" placeholder="devicenummer" class="w-full bg-transparent border rounded-xl px-3 py-2 text-sm font-mono outline-none ${state.darkMode ? 'border-white/20 text-white placeholder:text-white/30 focus:border-red-400' : 'border-slate-300 text-slate-900 placeholder:text-slate-400 focus:border-red-500'}" />
+                            <input type="text" value="${state.receiveForm.location}" oninput="updateReceiveForm('location', this.value)" placeholder="ontvangstlocatie" class="w-full bg-transparent border rounded-xl px-3 py-2 text-sm font-mono outline-none ${state.darkMode ? 'border-white/20 text-white placeholder:text-white/30 focus:border-red-400' : 'border-slate-300 text-slate-900 placeholder:text-slate-400 focus:border-red-500'}" />
+                            ${Button('Registreer ontvangst', 'submitReceiveForm()', 'success', 'check-circle', !canSubmitReceipt)}
+                        </div>
+                        <p class="${t.textSec} text-[11px] mt-2">Verwerking is serial-first: serienummer bepaalt update of nieuwe asset.</p>
                     </div>
                     ${state.wmsScanFeedback ? `<div class="p-3 rounded-xl border ${state.wmsScanFeedback.status === 'success' ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-300' : 'border-amber-500/40 bg-amber-500/10 text-amber-200'} text-xs mb-2">${state.wmsScanFeedback.message}</div>` : ''}
                     <div class="space-y-2">
@@ -666,8 +692,9 @@
                             <div class="p-3 rounded-xl border ${state.darkMode ? 'border-white/10 bg-white/5' : 'border-slate-200 bg-white'}">
                                 <p class="${t.textMain} text-sm font-semibold">${receipt.id}</p>
                                 <p class="${t.textSec} text-xs">${receipt.supplier}</p>
+                                <p class="${t.textSec} text-xs">Pakbon ${receipt.pakbonNumber} · Extern ${receipt.externalNumber}</p>
                                 <p class="${t.textMain} text-xs mt-1">Dock ${receipt.dock} · ${receipt.status}</p>
-                                <p class="${t.textSec} text-xs font-mono mt-1">${receipt.serial}</p>
+                                <p class="${t.textSec} text-xs font-mono mt-1">${receipt.serial} · ${receipt.deviceNumber}</p>
                             </div>
                         `).join('')}
                     </div>
@@ -1218,15 +1245,38 @@
                 const asset = assetResult.matchedItems[0];
                 const receipt = MOCK_RECEIPTS.find(r => normalizeScanCode(r.serial) === normalizedCode);
                 if (asset && assetResult.matchedBy !== 'location') {
-                    setState({ wmsScanFeedback: { status: 'success', message: `Ontvangst-scan: machine ${asset.serial} (${asset.deviceNumber}) herkend.` } });
+                    setState({
+                        receiveForm: {
+                            ...state.receiveForm,
+                            serial: asset.serial,
+                            deviceNumber: asset.deviceNumber,
+                            location: asset.location,
+                        },
+                        wmsScanFeedback: { status: 'success', message: `Machine ${asset.serial} herkend. Serienummer is leidend en formulier is aangevuld.` },
+                    });
                     return;
                 }
                 if (receipt) {
-                    setState({ wmsScanFeedback: { status: 'success', message: `Ontvangst ${receipt.id} gevonden voor serial ${receipt.serial}.` } });
+                    setState({
+                        receiveForm: {
+                            pakbonNumber: receipt.pakbonNumber || '',
+                            externalNumber: receipt.externalNumber || '',
+                            serial: receipt.serial || '',
+                            deviceNumber: receipt.deviceNumber || '',
+                            location: receipt.dock || '',
+                        },
+                        wmsScanFeedback: { status: 'success', message: `Ontvangst ${receipt.id} geladen voor serial ${receipt.serial}.` },
+                    });
                     return;
                 }
                 if (locationResult.matchedItems.length > 0) {
-                    setState({ wmsScanFeedback: { status: 'success', message: `Dock/locatie herkend: ${locationResult.matchedItems[0]}.` } });
+                    setState({
+                        receiveForm: {
+                            ...state.receiveForm,
+                            location: locationResult.matchedItems[0],
+                        },
+                        wmsScanFeedback: { status: 'success', message: `Dock/locatie herkend: ${locationResult.matchedItems[0]}.` },
+                    });
                     return;
                 }
                 setState({ wmsScanFeedback: { status: 'warning', message: `Geen ontvangstmatch voor code ${normalizedCode}.` } });
@@ -1262,6 +1312,88 @@
                     [field]: shouldUppercase ? value.toUpperCase() : value,
                 },
                 wmsScanFeedback: null,
+            });
+        };
+        window.updateReceiveForm = (field, value) => {
+            if (!['pakbonNumber', 'externalNumber', 'serial', 'deviceNumber', 'location'].includes(field)) return;
+            setState({
+                receiveForm: {
+                    ...state.receiveForm,
+                    [field]: value.toUpperCase(),
+                },
+                wmsScanFeedback: null,
+            });
+        };
+        window.submitReceiveForm = () => {
+            const pakbonNumber = (state.receiveForm.pakbonNumber || '').trim().toUpperCase();
+            const externalNumber = (state.receiveForm.externalNumber || '').trim().toUpperCase();
+            const serial = (state.receiveForm.serial || '').trim().toUpperCase();
+            const deviceNumber = (state.receiveForm.deviceNumber || '').trim().toUpperCase();
+            const location = (state.receiveForm.location || '').trim().toUpperCase();
+
+            if (!serial || !pakbonNumber || !externalNumber || !deviceNumber || !location) {
+                setState({ wmsScanFeedback: { status: 'warning', message: 'Vul pakbonnummer, extern nummer, serienummer, devicenummer en ontvangstlocatie in.' } });
+                return;
+            }
+
+            const now = new Date().toISOString();
+            const actor = state.user?.initials || 'SYS';
+            const existingAssetIndex = MOCK_ASSETS.findIndex(asset => normalizeScanCode(asset.serial) === normalizeScanCode(serial));
+            const existingAsset = existingAssetIndex !== -1 ? MOCK_ASSETS[existingAssetIndex] : null;
+            const previousLocation = existingAsset?.location || '-';
+            const isNewAsset = !existingAsset;
+
+            if (existingAsset) {
+                MOCK_ASSETS[existingAssetIndex] = {
+                    ...existingAsset,
+                    deviceNumber,
+                    location,
+                    status: 'receiving',
+                    updatedAt: now,
+                };
+            } else {
+                MOCK_ASSETS.unshift({
+                    serial,
+                    deviceNumber,
+                    description: 'Nieuwe asset via goederenontvangst',
+                    location,
+                    status: 'receiving',
+                    updatedAt: now,
+                });
+            }
+
+            const receiptId = `RCV-${now.slice(2, 10).replace(/-/g, '')}-${String(MOCK_RECEIPTS.length + 1).padStart(3, '0')}`;
+            MOCK_RECEIPTS.unshift({
+                id: receiptId,
+                serial,
+                deviceNumber,
+                pakbonNumber,
+                externalNumber,
+                dock: location,
+                supplier: 'Onbekend / handmatig',
+                status: 'received',
+                receivedAt: now,
+            });
+
+            MOCK_HISTORY_LOG.unshift({
+                id: `LOG-${Date.now()}`,
+                serial,
+                event: isNewAsset ? 'Nieuwe asset ontvangen' : 'Ontvangst verwerkt',
+                from: previousLocation,
+                to: location,
+                actor,
+                loggedAt: now,
+            });
+
+            setState({
+                receiveForm: { pakbonNumber: '', externalNumber: '', serial: '', deviceNumber: '', location: '' },
+                moveSelectedAssetSerial: serial,
+                wmsScanFeedback: {
+                    status: 'success',
+                    message: isNewAsset
+                        ? `Ontvangst ${receiptId} geregistreerd. Nieuwe asset ${serial} toegevoegd op ${location}.`
+                        : `Ontvangst ${receiptId} geregistreerd. Asset ${serial} bijgewerkt naar ${location}.`,
+                },
             });
         };
         window.createMoveTask = () => {
