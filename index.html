@@ -44,6 +44,18 @@
             ]
         };
 
+        const DEFAULT_LOCATION_ZONES = [
+            'C-LINKS',
+            'C-RECHTS',
+            'W16',
+            'EXP-01',
+            'INK-01',
+            'DOCK-01',
+            'DOCK-02',
+            'DOCK-03',
+            'DOCK-04'
+        ];
+
         let state = {
             view: 'login',
             user: null,
@@ -171,6 +183,29 @@
             return state.db.tasks.filter(task => task.status === 'Open');
         }
 
+        function getValidLocations() {
+            const locations = new Set(DEFAULT_LOCATION_ZONES.map(normalizeCode));
+            state.db.assets.forEach(asset => locations.add(normalizeCode(asset.location)));
+            state.db.tasks.forEach(task => {
+                locations.add(normalizeCode(task.fromLocation));
+                locations.add(normalizeCode(task.toLocation));
+            });
+            state.db.receipts.forEach(receipt => locations.add(normalizeCode(receipt.location)));
+            return Array.from(locations).filter(Boolean).sort((a, b) => a.localeCompare(b));
+        }
+
+        function isKnownLocation(value) {
+            const normalized = normalizeCode(value);
+            if (!normalized) return false;
+            return getValidLocations().includes(normalized);
+        }
+
+        function getUnknownLocationWarning(value) {
+            const normalized = normalizeCode(value);
+            if (!normalized || isKnownLocation(normalized)) return '';
+            return `Waarschuwing: locatie ${normalized} is onbekend in de standaardlijst.`;
+        }
+
         function getStats() {
             return {
                 assets: state.db.assets.length,
@@ -189,6 +224,26 @@
                 }
             };
             render();
+        }
+
+        function LocationInput(section, field, value, placeholder, scannerTarget = null) {
+            const t = getTheme();
+            const datalistId = `${section}-${field}-options`;
+            const warning = getUnknownLocationWarning(value);
+            const options = getValidLocations()
+                .map(location => `<option value="${location}"></option>`)
+                .join('');
+            return `
+                <div>
+                    <div class="flex items-center justify-between mb-2">
+                        <label class="text-xs uppercase tracking-[0.2em] ${t.textSec}">${placeholder}</label>
+                        ${scannerTarget ? `<button onclick="window.openScanner('${scannerTarget}')" class="text-xs px-3 py-1 rounded-full border ${t.chip}">Scan</button>` : ''}
+                    </div>
+                    <input value="${value}" list="${datalistId}" oninput="window.updateLocationField('${section}', '${field}', this.value)" placeholder="${placeholder}" class="w-full rounded-xl border px-3 py-3 outline-none ${t.input}" />
+                    <datalist id="${datalistId}">${options}</datalist>
+                    ${warning ? `<p class="mt-2 text-xs text-amber-300">${warning}</p>` : `<p class="mt-2 text-xs ${t.textSec}">Kies uit suggesties of typ handmatig voor niet-standaard locaties.</p>`}
+                </div>
+            `;
         }
 
         function applyReceiptPrefill(code, sourceField = 'serial') {
@@ -249,7 +304,11 @@
             state.forms.move = { serial: '', toLocation: '', note: '' };
             state.activeTaskId = null;
             setState({ db: state.db, forms: state.forms, activeTaskId: state.activeTaskId });
-            setFlash(`Machine ${asset.serial} verplaatst naar ${destination}.`);
+            if (isKnownLocation(destination)) {
+                setFlash(`Machine ${asset.serial} verplaatst naar ${destination}.`);
+            } else {
+                setFlash(`Machine ${asset.serial} verplaatst naar ${destination}. Let op: onbekende locatiecode.`, 'warning');
+            }
         }
 
         function receiveAsset() {
@@ -311,7 +370,11 @@
             state.forms.receipt = { receiptNumber: '', externalNumber: '', serial: '', device: '', location: 'INK-01' };
             state.receiptPrefill = null;
             setState({ db: state.db, forms: state.forms, receiptPrefill: state.receiptPrefill });
-            setFlash(`Ontvangst opgeslagen voor ${serial}.`);
+            if (isKnownLocation(location)) {
+                setFlash(`Ontvangst opgeslagen voor ${serial}.`);
+            } else {
+                setFlash(`Ontvangst opgeslagen voor ${serial}. Let op: onbekende locatiecode.`, 'warning');
+            }
         }
 
         function createTask() {
@@ -339,7 +402,11 @@
 
             state.forms.task = { serial: '', fromLocation: '', toLocation: '', notes: '' };
             setState({ db: state.db, forms: state.forms });
-            setFlash(`Opdracht aangemaakt voor ${serial}.`);
+            if (isKnownLocation(fromLocation) && isKnownLocation(toLocation)) {
+                setFlash(`Opdracht aangemaakt voor ${serial}.`);
+            } else {
+                setFlash(`Opdracht aangemaakt voor ${serial}. Let op: onbekende locatiecode ingevoerd.`, 'warning');
+            }
         }
 
         function useTask(taskId) {
@@ -492,13 +559,7 @@
                                 </div>
                                 <input value="${form.serial}" oninput="window.updateMoveField('serial', this.value)" placeholder="Bijv. H2X386Y00010" class="w-full rounded-xl border px-3 py-3 outline-none ${t.input}" />
                             </div>
-                            <div>
-                                <div class="flex items-center justify-between mb-2">
-                                    <label class="text-xs uppercase tracking-[0.2em] ${t.textSec}">Naar locatie</label>
-                                    <button onclick="window.openScanner('move-location')" class="text-xs px-3 py-1 rounded-full border ${t.chip}">Scan</button>
-                                </div>
-                                <input value="${form.toLocation}" oninput="window.updateMoveField('toLocation', this.value)" placeholder="Bijv. W16" class="w-full rounded-xl border px-3 py-3 outline-none ${t.input}" />
-                            </div>
+                            ${LocationInput('move', 'toLocation', form.toLocation, 'Naar locatie', 'move-location')}
                             <div>
                                 <label class="text-xs uppercase tracking-[0.2em] ${t.textSec}">Opmerking</label>
                                 <textarea oninput="window.updateMoveField('note', this.value)" placeholder="Optionele toelichting" class="w-full rounded-xl border px-3 py-3 outline-none min-h-[96px] ${t.input}">${form.note}</textarea>
@@ -560,8 +621,8 @@
                             </div>
                             <input value="${form.serial}" oninput="window.updateTaskField('serial', this.value)" placeholder="Serienummer" class="w-full rounded-xl border px-3 py-3 outline-none ${t.input}" />
                             <div class="grid grid-cols-2 gap-3">
-                                <input value="${form.fromLocation}" oninput="window.updateTaskField('fromLocation', this.value)" placeholder="Van locatie" class="w-full rounded-xl border px-3 py-3 outline-none ${t.input}" />
-                                <input value="${form.toLocation}" oninput="window.updateTaskField('toLocation', this.value)" placeholder="Naar locatie" class="w-full rounded-xl border px-3 py-3 outline-none ${t.input}" />
+                                ${LocationInput('task', 'fromLocation', form.fromLocation, 'Van locatie')}
+                                ${LocationInput('task', 'toLocation', form.toLocation, 'Naar locatie')}
                             </div>
                             <textarea oninput="window.updateTaskField('notes', this.value)" placeholder="Opmerking" class="w-full rounded-xl border px-3 py-3 outline-none min-h-[80px] ${t.input}">${form.notes}</textarea>
                             ${Button('Opdracht aanmaken', 'window.submitTask()', 'primary', 'plus')}
@@ -620,10 +681,7 @@
                                     <div class="flex items-center justify-between mb-2"><label class="text-xs uppercase tracking-[0.2em] ${t.textSec}">Devicenummer</label><button onclick="window.openScanner('receipt-device')" class="text-xs px-3 py-1 rounded-full border ${t.chip}">Scan</button></div>
                                     <input value="${form.device}" oninput="window.updateReceiptField('device', this.value)" placeholder="Devicenummer" class="w-full rounded-xl border px-3 py-3 outline-none ${t.input}" />
                                 </div>
-                                <div>
-                                    <div class="flex items-center justify-between mb-2"><label class="text-xs uppercase tracking-[0.2em] ${t.textSec}">Ontvangstlocatie</label><button onclick="window.openScanner('receipt-location')" class="text-xs px-3 py-1 rounded-full border ${t.chip}">Scan</button></div>
-                                    <input value="${form.location}" oninput="window.updateReceiptField('location', this.value)" placeholder="Bijv. INK-01" class="w-full rounded-xl border px-3 py-3 outline-none ${t.input}" />
-                                </div>
+                                ${LocationInput('receipt', 'location', form.location, 'Ontvangstlocatie', 'receipt-location')}
                             </div>
                             ${state.receiptPrefill ? `<div class="rounded-xl border border-emerald-400/30 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-100">Vooringevuld op basis van bekende machine (${state.receiptPrefill.sourceField === 'device' ? 'devicenummer' : 'serienummer'}). Je kunt velden nog aanpassen.</div>` : ''}
                             ${Button('Ontvangst registreren', 'window.submitReceipt()', 'success', 'package-check')}
@@ -808,6 +866,7 @@
 
         window.navigate = (view) => setState({ view });
         window.toggleTheme = () => { state.darkMode = !state.darkMode; render(); };
+        window.updateLocationField = (section, field, value) => updateForm(section, field, value);
         window.updateMoveField = (field, value) => updateForm('move', field, value);
         window.updateTaskField = (field, value) => updateForm('task', field, value);
         window.updateReceiptField = (field, value) => {
