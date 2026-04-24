@@ -109,6 +109,11 @@
                 task: { serial: '', fromLocation: '', toLocation: '', notes: '', assignee: 'MON' },
                 receipt: { receiptNumber: '', externalNumber: '', serial: '', device: '', location: 'INK-01' }
             },
+            validation: {
+                move: {},
+                task: {},
+                receipt: {}
+            },
             db: loadDb()
         };
 
@@ -328,7 +333,61 @@
                     [field]: value
                 }
             };
+            if (state.validation?.[section]?.[field]) {
+                state.validation = {
+                    ...state.validation,
+                    [section]: {
+                        ...state.validation[section],
+                        [field]: null
+                    }
+                };
+            }
             render();
+        }
+
+        function setFormValidation(section, errors = {}) {
+            state.validation = {
+                ...state.validation,
+                [section]: errors
+            };
+        }
+
+        function clearFormValidation(section) {
+            setFormValidation(section, {});
+        }
+
+        function getFieldError(section, field) {
+            return state.validation?.[section]?.[field] || '';
+        }
+
+        function getInputValidationClasses(section, field) {
+            const hasError = Boolean(getFieldError(section, field));
+            if (!hasError) return '';
+            return state.darkMode
+                ? 'border-red-400 ring-1 ring-red-400/70'
+                : 'border-red-500 ring-1 ring-red-500/40';
+        }
+
+        function renderFieldError(section, field) {
+            const message = getFieldError(section, field);
+            if (!message) return '';
+            return `<p class="mt-1 text-xs text-red-300">${message}</p>`;
+        }
+
+        function getMissingFieldErrors(formValues, requiredFields) {
+            return requiredFields.reduce((errors, fieldConfig) => {
+                const value = normalizeCode(formValues[fieldConfig.key]);
+                if (!value) {
+                    errors[fieldConfig.key] = `Veld verplicht: ${fieldConfig.label}.`;
+                }
+                return errors;
+            }, {});
+        }
+
+        function getMissingFieldsFlashMessage(errors) {
+            const labels = Object.values(errors).map((message) => message.replace('Veld verplicht: ', '').replace('.', ''));
+            if (labels.length === 0) return '';
+            return `Ontbrekend(e) veld(en): ${labels.join(', ')}.`;
         }
 
         function LocationInput(section, field, value, placeholder, scannerTarget = null) {
@@ -344,8 +403,9 @@
                         <label class="text-xs uppercase tracking-[0.2em] ${t.textSec}">${placeholder}</label>
                         ${scannerTarget ? `<button onclick="window.openScanner('${scannerTarget}')" class="text-xs px-3 py-1 rounded-full border ${t.chip}">Scan</button>` : ''}
                     </div>
-                    <input value="${value}" list="${datalistId}" oninput="window.updateLocationField('${section}', '${field}', this.value)" placeholder="${placeholder}" class="w-full rounded-xl border px-3 py-3 outline-none ${t.input}" />
+                    <input value="${value}" list="${datalistId}" oninput="window.updateLocationField('${section}', '${field}', this.value)" placeholder="${placeholder}" class="w-full rounded-xl border px-3 py-3 outline-none ${t.input} ${getInputValidationClasses(section, field)}" />
                     <datalist id="${datalistId}">${options}</datalist>
+                    ${renderFieldError(section, field)}
                     ${warning ? `<p class="mt-2 text-xs text-amber-300">${warning}</p>` : `<p class="mt-2 text-xs ${t.textSec}">Kies uit suggesties of typ handmatig voor niet-standaard locaties.</p>`}
                 </div>
             `;
@@ -407,12 +467,13 @@
             }
 
             state.forms.move = { serial: '', toLocation: '', note: '' };
+            clearFormValidation('move');
             state.activeTaskId = null;
             setState({ db: state.db, forms: state.forms, activeTaskId: state.activeTaskId });
             if (isKnownLocation(destination)) {
-                setFlash(`Machine ${asset.serial} verplaatst naar ${destination}.`);
+                setFlash(`Machine ${asset.serial} verplaatst van ${fromLocation} naar ${destination} door ${state.user.initials}.`);
             } else {
-                setFlash(`Machine ${asset.serial} verplaatst naar ${destination}. Let op: onbekende locatiecode.`, 'warning');
+                setFlash(`Machine ${asset.serial} verplaatst van ${fromLocation} naar ${destination} door ${state.user.initials}. Let op: onbekende locatiecode.`, 'warning');
             }
         }
 
@@ -424,10 +485,21 @@
             const receiptNumber = normalizeCode(form.receiptNumber);
             const externalNumber = normalizeCode(form.externalNumber);
 
-            if (!serial || !device || !location || !receiptNumber || !externalNumber) {
-                setFlash('Vul pakbon, extern nummer, serienummer, devicenummer en locatie in.', 'warning');
+            const requiredFields = [
+                { key: 'receiptNumber', label: 'Pakbonnummer' },
+                { key: 'externalNumber', label: 'Extern nummer' },
+                { key: 'serial', label: 'Serienummer' },
+                { key: 'device', label: 'Devicenummer' },
+                { key: 'location', label: 'Locatie' }
+            ];
+            const missingFieldErrors = getMissingFieldErrors(form, requiredFields);
+            if (Object.keys(missingFieldErrors).length > 0) {
+                setFormValidation('receipt', missingFieldErrors);
+                setFlash(getMissingFieldsFlashMessage(missingFieldErrors), 'warning');
+                render();
                 return;
             }
+            clearFormValidation('receipt');
 
             let asset = getAssetByCode(serial) || getAssetByCode(device);
             const isNew = !asset;
@@ -476,9 +548,9 @@
             state.receiptPrefill = null;
             setState({ db: state.db, forms: state.forms, receiptPrefill: state.receiptPrefill });
             if (isKnownLocation(location)) {
-                setFlash(`Ontvangst opgeslagen voor ${serial}.`);
+                setFlash(`Ontvangst opgeslagen: ${serial} op ${location} door ${state.user.initials} (pakbon ${receiptNumber}).`);
             } else {
-                setFlash(`Ontvangst opgeslagen voor ${serial}. Let op: onbekende locatiecode.`, 'warning');
+                setFlash(`Ontvangst opgeslagen: ${serial} op ${location} door ${state.user.initials} (pakbon ${receiptNumber}). Let op: onbekende locatiecode.`, 'warning');
             }
         }
 
@@ -494,10 +566,19 @@
             const notes = (form.notes || '').trim();
             const assignee = normalizeCode(form.assignee) || 'MON';
 
-            if (!serial || !fromLocation || !toLocation) {
-                setFlash('Vul serienummer, van-locatie en naar-locatie in.', 'warning');
+            const requiredFields = [
+                { key: 'serial', label: 'Serienummer' },
+                { key: 'fromLocation', label: 'Van locatie' },
+                { key: 'toLocation', label: 'Naar locatie' }
+            ];
+            const missingFieldErrors = getMissingFieldErrors(form, requiredFields);
+            if (Object.keys(missingFieldErrors).length > 0) {
+                setFormValidation('task', missingFieldErrors);
+                setFlash(getMissingFieldsFlashMessage(missingFieldErrors), 'warning');
+                render();
                 return;
             }
+            clearFormValidation('task');
 
             state.db.tasks.unshift({
                 id: makeId('REQ'),
@@ -514,9 +595,9 @@
             state.forms.task = { serial: '', fromLocation: '', toLocation: '', notes: '', assignee };
             setState({ db: state.db, forms: state.forms });
             if (isKnownLocation(fromLocation) && isKnownLocation(toLocation)) {
-                setFlash(`Opdracht aangemaakt voor ${serial}.`);
+                setFlash(`Opdracht aangemaakt voor ${serial}: ${fromLocation} → ${toLocation}, toegewezen aan ${assignee}.`);
             } else {
-                setFlash(`Opdracht aangemaakt voor ${serial}. Let op: onbekende locatiecode ingevoerd.`, 'warning');
+                setFlash(`Opdracht aangemaakt voor ${serial}: ${fromLocation} → ${toLocation}, toegewezen aan ${assignee}. Let op: onbekende locatiecode ingevoerd.`, 'warning');
             }
         }
 
@@ -543,6 +624,7 @@
                 task: { serial: '', fromLocation: '', toLocation: '', notes: '', assignee: 'MON' },
                 receipt: { receiptNumber: '', externalNumber: '', serial: '', device: '', location: 'INK-01' }
             };
+            state.validation = { move: {}, task: {}, receipt: {} };
             state.activeTaskId = null;
             state.receiptPrefill = null;
             state.moveAssetSearch = '';
@@ -552,6 +634,7 @@
             setState({
                 db: state.db,
                 forms: state.forms,
+                validation: state.validation,
                 activeTaskId: null,
                 receiptPrefill: null,
                 moveAssetSearch: '',
@@ -722,7 +805,8 @@
                                     <label class="text-xs uppercase tracking-[0.2em] ${t.textSec}">Serienummer of device</label>
                                     <button onclick="window.openScanner('move-serial')" class="text-xs px-3 py-1 rounded-full border ${t.chip}">Scan</button>
                                 </div>
-                                <input value="${form.serial}" oninput="window.updateMoveField('serial', this.value)" placeholder="Bijv. H2X386Y00010" class="w-full rounded-xl border px-3 py-3 outline-none ${t.input}" />
+                                <input value="${form.serial}" oninput="window.updateMoveField('serial', this.value)" placeholder="Bijv. H2X386Y00010" class="w-full rounded-xl border px-3 py-3 outline-none ${t.input} ${getInputValidationClasses('move', 'serial')}" />
+                                ${renderFieldError('move', 'serial')}
                             </div>
                             ${LocationInput('move', 'toLocation', form.toLocation, 'Naar locatie', 'move-location')}
                             <div>
@@ -797,7 +881,8 @@
                                 <label class="text-xs uppercase tracking-[0.2em] ${t.textSec}">Nieuwe opdracht</label>
                                 <button onclick="window.openScanner('task-serial')" class="text-xs px-3 py-1 rounded-full border ${t.chip}">Scan serienummer</button>
                             </div>
-                            <input value="${form.serial}" oninput="window.updateTaskField('serial', this.value)" placeholder="Serienummer" class="w-full rounded-xl border px-3 py-3 outline-none ${t.input}" />
+                            <input value="${form.serial}" oninput="window.updateTaskField('serial', this.value)" placeholder="Serienummer" class="w-full rounded-xl border px-3 py-3 outline-none ${t.input} ${getInputValidationClasses('task', 'serial')}" />
+                            ${renderFieldError('task', 'serial')}
                             <div class="grid grid-cols-2 gap-3">
                                 ${LocationInput('task', 'fromLocation', form.fromLocation, 'Van locatie')}
                                 ${LocationInput('task', 'toLocation', form.toLocation, 'Naar locatie')}
@@ -872,16 +957,24 @@
 
                     ${GlassCard(`
                         <div class="space-y-3">
-                            <input value="${form.receiptNumber}" oninput="window.updateReceiptField('receiptNumber', this.value)" placeholder="Pakbonnummer" class="w-full rounded-xl border px-3 py-3 outline-none ${t.input}" />
-                            <input value="${form.externalNumber}" oninput="window.updateReceiptField('externalNumber', this.value)" placeholder="Extern nummer" class="w-full rounded-xl border px-3 py-3 outline-none ${t.input}" />
+                            <div>
+                                <input value="${form.receiptNumber}" oninput="window.updateReceiptField('receiptNumber', this.value)" placeholder="Pakbonnummer" class="w-full rounded-xl border px-3 py-3 outline-none ${t.input} ${getInputValidationClasses('receipt', 'receiptNumber')}" />
+                                ${renderFieldError('receipt', 'receiptNumber')}
+                            </div>
+                            <div>
+                                <input value="${form.externalNumber}" oninput="window.updateReceiptField('externalNumber', this.value)" placeholder="Extern nummer" class="w-full rounded-xl border px-3 py-3 outline-none ${t.input} ${getInputValidationClasses('receipt', 'externalNumber')}" />
+                                ${renderFieldError('receipt', 'externalNumber')}
+                            </div>
                             <div class="grid grid-cols-1 gap-3">
                                 <div>
                                     <div class="flex items-center justify-between mb-2"><label class="text-xs uppercase tracking-[0.2em] ${t.textSec}">Serienummer</label><button onclick="window.openScanner('receipt-serial')" class="text-xs px-3 py-1 rounded-full border ${t.chip}">Scan</button></div>
-                                    <input value="${form.serial}" oninput="window.updateReceiptField('serial', this.value)" placeholder="Serienummer" class="w-full rounded-xl border px-3 py-3 outline-none ${t.input}" />
+                                    <input value="${form.serial}" oninput="window.updateReceiptField('serial', this.value)" placeholder="Serienummer" class="w-full rounded-xl border px-3 py-3 outline-none ${t.input} ${getInputValidationClasses('receipt', 'serial')}" />
+                                    ${renderFieldError('receipt', 'serial')}
                                 </div>
                                 <div>
                                     <div class="flex items-center justify-between mb-2"><label class="text-xs uppercase tracking-[0.2em] ${t.textSec}">Devicenummer</label><button onclick="window.openScanner('receipt-device')" class="text-xs px-3 py-1 rounded-full border ${t.chip}">Scan</button></div>
-                                    <input value="${form.device}" oninput="window.updateReceiptField('device', this.value)" placeholder="Devicenummer" class="w-full rounded-xl border px-3 py-3 outline-none ${t.input}" />
+                                    <input value="${form.device}" oninput="window.updateReceiptField('device', this.value)" placeholder="Devicenummer" class="w-full rounded-xl border px-3 py-3 outline-none ${t.input} ${getInputValidationClasses('receipt', 'device')}" />
+                                    ${renderFieldError('receipt', 'device')}
                                 </div>
                                 ${LocationInput('receipt', 'location', form.location, 'Ontvangstlocatie', 'receipt-location')}
                             </div>
@@ -1271,6 +1364,18 @@
                 return;
             }
             const form = state.forms.move;
+            const requiredFields = [
+                { key: 'serial', label: 'Serienummer of devicenummer' },
+                { key: 'toLocation', label: 'Doellocatie' }
+            ];
+            const missingFieldErrors = getMissingFieldErrors(form, requiredFields);
+            if (Object.keys(missingFieldErrors).length > 0) {
+                setFormValidation('move', missingFieldErrors);
+                setFlash(getMissingFieldsFlashMessage(missingFieldErrors), 'warning');
+                render();
+                return;
+            }
+            clearFormValidation('move');
             const asset = getAssetByCode(form.serial);
             if (!asset) {
                 setFlash('Machine niet gevonden op serienummer of devicenummer.', 'warning');
