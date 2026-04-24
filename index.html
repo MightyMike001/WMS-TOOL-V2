@@ -241,10 +241,10 @@
 
         function getAllowedViews(role) {
             const byRole = {
-                planner: ['dashboard', 'move', 'tasks', 'receive', 'history'],
-                expeditie: ['dashboard', 'move', 'receive', 'history'],
-                monteur: ['dashboard', 'move', 'tasks', 'history'],
-                manager: ['dashboard', 'history']
+                planner: ['dashboard', 'move', 'tasks', 'receive', 'history', 'datamodel'],
+                expeditie: ['dashboard', 'move', 'receive', 'history', 'datamodel'],
+                monteur: ['dashboard', 'move', 'tasks', 'history', 'datamodel'],
+                manager: ['dashboard', 'history', 'datamodel']
             };
             return byRole[role] || ['dashboard'];
         }
@@ -948,18 +948,156 @@
             `;
         }
 
+        function renderDatamodel() {
+            const t = getTheme();
+            const entities = [
+                {
+                    name: 'Assets',
+                    description: 'Hoofdtabel met de actuele stand van elk apparaat in het magazijn.',
+                    primaryKey: 'serial (primaire sleutel)',
+                    columns: [
+                        { name: 'serial', type: 'Text', required: true, note: 'Uniek serienummer (business key).' },
+                        { name: 'device', type: 'Text', required: true, note: 'Intern devicenummer.' },
+                        { name: 'description', type: 'Text', required: true, note: 'Leesbare omschrijving van het apparaat.' },
+                        { name: 'location', type: 'Text', required: true, note: 'Laatste bekende locatiecode.' },
+                        { name: 'status', type: 'Choice/Text', required: true, note: 'Afgeleid van locatieprefix (bijv. W*, INK*, DOCK*).' },
+                        { name: 'updatedAt', type: 'DateTime', required: true, note: 'Laatste mutatietijdstip.' }
+                    ]
+                },
+                {
+                    name: 'Tasks',
+                    description: 'Werkopdrachten voor verplaatsingen die door operators/monteurs worden uitgevoerd.',
+                    primaryKey: 'id',
+                    columns: [
+                        { name: 'id', type: 'Text', required: true, note: 'Unieke opdrachtcode (bijv. REQ-1001).' },
+                        { name: 'serial', type: 'Lookup/Text', required: true, note: 'Verwijzing naar Assets.serial.' },
+                        { name: 'fromLocation', type: 'Text', required: true, note: 'Startlocatie van de opdracht.' },
+                        { name: 'toLocation', type: 'Text', required: true, note: 'Doellocatie van de opdracht.' },
+                        { name: 'requester', type: 'Text', required: true, note: 'Initialen van aanvrager.' },
+                        { name: 'notes', type: 'Multiline Text', required: false, note: 'Optionele toelichting.' },
+                        { name: 'status', type: 'Choice/Text', required: true, note: 'Bijv. Open of Voltooid.' },
+                        { name: 'createdAt', type: 'DateTime', required: true, note: 'Aangemaakt op.' },
+                        { name: 'assignee', type: 'Text', required: false, note: 'Mockup-extensie voor toewijzing.' }
+                    ]
+                },
+                {
+                    name: 'Receipts',
+                    description: 'Ontvangstregistratie van pakbonnen en externe nummers.',
+                    primaryKey: 'id',
+                    columns: [
+                        { name: 'id', type: 'Text', required: true, note: 'Unieke ontvangstcode (bijv. RCV-9001).' },
+                        { name: 'receiptNumber', type: 'Text', required: true, note: 'Pakbonnummer.' },
+                        { name: 'externalNumber', type: 'Text', required: true, note: 'Extern referentienummer.' },
+                        { name: 'serial', type: 'Lookup/Text', required: true, note: 'Verwijzing naar Assets.serial.' },
+                        { name: 'device', type: 'Text', required: true, note: 'Devicenummer op ontvangst.' },
+                        { name: 'location', type: 'Text', required: true, note: 'Ontvangstlocatie.' },
+                        { name: 'operator', type: 'Text', required: true, note: 'Initialen van uitvoerder.' },
+                        { name: 'createdAt', type: 'DateTime', required: true, note: 'Mutatietijdstip.' }
+                    ]
+                },
+                {
+                    name: 'History',
+                    description: 'Audit trail van verplaatsingen en ontvangsten.',
+                    primaryKey: 'id',
+                    columns: [
+                        { name: 'id', type: 'Text', required: true, note: 'Unieke historiecode.' },
+                        { name: 'type', type: 'Choice/Text', required: true, note: 'Bijv. move of receipt.' },
+                        { name: 'serial', type: 'Lookup/Text', required: true, note: 'Verwijzing naar Assets.serial.' },
+                        { name: 'device', type: 'Text', required: true, note: 'Devicenummer op moment van gebeurtenis.' },
+                        { name: 'fromLocation', type: 'Text', required: true, note: 'Bronlocatie (of LEVERANCIER/ONBEKEND).' },
+                        { name: 'toLocation', type: 'Text', required: true, note: 'Doellocatie.' },
+                        { name: 'operator', type: 'Text', required: true, note: 'Initialen van uitvoerder.' },
+                        { name: 'note', type: 'Multiline Text', required: false, note: 'Context/reden van mutatie.' },
+                        { name: 'createdAt', type: 'DateTime', required: true, note: 'Mutatietijdstip.' }
+                    ]
+                }
+            ];
+            const relations = [
+                'Tasks.serial ↔ Assets.serial (één-op-veel): één asset kan meerdere opdrachten hebben.',
+                'History.serial ↔ Assets.serial (één-op-veel): één asset heeft meerdere historie-events.',
+                'Receipts.serial ↔ Assets.serial (één-op-veel): bij ontvangst kan asset nieuw worden aangemaakt.'
+            ];
+
+            return `
+                <div class="h-full flex flex-col px-4 pt-4 pb-2 overflow-hidden">
+                    <div class="flex items-center gap-3 mb-4">
+                        <button onclick="window.navigate('dashboard')" class="p-2 rounded-xl border ${t.chip}"><i data-lucide="arrow-left" width="18"></i></button>
+                        <div>
+                            <h1 class="text-lg font-bold ${t.textMain}">Data Model</h1>
+                            <p class="text-xs ${t.textSec}">Dataverse-ready overzicht van tabellen, kolommen en relaties.</p>
+                        </div>
+                    </div>
+
+                    ${GlassCard(`
+                        <div class="space-y-2">
+                            <h2 class="font-bold ${t.textMain}">Normalisatie & statuslogica</h2>
+                            <ul class="list-disc pl-5 space-y-1 text-sm ${t.textSec}">
+                                <li>Alle codes worden genormaliseerd met <span class="font-mono ${t.textMain}">trim + remove spaces + uppercase</span>.</li>
+                                <li>Locaties bepalen de status via prefixregels: <span class="font-mono ${t.textMain}">W*</span> → Op werkvloer, <span class="font-mono ${t.textMain}">EXP*</span> → Expeditie, <span class="font-mono ${t.textMain}">INK*</span> → Ontvangst, <span class="font-mono ${t.textMain}">DOCK*</span> → Dock.</li>
+                                <li>Als geen regel matcht, valt status terug op <span class="font-mono ${t.textMain}">Beschikbaar</span>.</li>
+                                <li>Assets gebruikt <span class="font-mono ${t.textMain}">serial</span> als primaire sleutel (business key).</li>
+                            </ul>
+                        </div>
+                    `, 'mb-3')}
+
+                    ${GlassCard(`
+                        <div>
+                            <h2 class="font-bold mb-2 ${t.textMain}">Relaties</h2>
+                            <ul class="list-disc pl-5 space-y-1 text-sm ${t.textSec}">
+                                ${relations.map(relation => `<li>${relation}</li>`).join('')}
+                            </ul>
+                        </div>
+                    `, 'mb-3')}
+
+                    <div class="flex-1 overflow-y-auto no-scrollbar pb-20 space-y-3">
+                        ${entities.map(entity => GlassCard(`
+                            <div class="space-y-3">
+                                <div class="flex items-start justify-between gap-3">
+                                    <div>
+                                        <h3 class="font-bold ${t.textMain}">${entity.name}</h3>
+                                        <p class="text-xs ${t.textSec}">${entity.description}</p>
+                                    </div>
+                                    <span class="text-[11px] px-2 py-1 rounded-full border ${t.chip}">PK: ${entity.primaryKey}</span>
+                                </div>
+                                <div class="rounded-xl border ${t.chip} overflow-hidden">
+                                    <div class="grid grid-cols-12 gap-2 px-3 py-2 text-[11px] uppercase tracking-[0.15em] ${t.textSec}">
+                                        <div class="col-span-3">Kolom</div>
+                                        <div class="col-span-3">Type</div>
+                                        <div class="col-span-2">Verplicht</div>
+                                        <div class="col-span-4">Uitleg</div>
+                                    </div>
+                                    <div class="divide-y ${state.darkMode ? 'divide-white/10' : 'divide-slate-200'}">
+                                        ${entity.columns.map(column => `
+                                            <div class="grid grid-cols-12 gap-2 px-3 py-2 text-xs">
+                                                <div class="col-span-3 font-mono ${t.textMain}">${column.name}</div>
+                                                <div class="col-span-3 ${t.textSec}">${column.type}</div>
+                                                <div class="col-span-2 ${column.required ? 'text-emerald-300' : t.textSec}">${column.required ? 'Ja' : 'Nee'}</div>
+                                                <div class="col-span-4 ${t.textSec}">${column.note}</div>
+                                            </div>
+                                        `).join('')}
+                                    </div>
+                                </div>
+                            </div>
+                        `)).join('')}
+                    </div>
+                    ${renderNav()}
+                </div>
+            `;
+        }
+
         function renderNav() {
             const t = getTheme();
             const navItems = [
-                { view: 'dashboard', icon: 'home' },
-                { view: 'move', icon: 'move-right' },
-                { view: 'tasks', icon: 'clipboard-list' },
-                { view: 'receive', icon: 'package-check' },
-                { view: 'history', icon: 'history' }
+                { view: 'dashboard', icon: 'home', label: 'Home' },
+                { view: 'move', icon: 'move-right', label: 'Move' },
+                { view: 'tasks', icon: 'clipboard-list', label: 'Tasks' },
+                { view: 'receive', icon: 'package-check', label: 'Receive' },
+                { view: 'history', icon: 'history', label: 'History' },
+                { view: 'datamodel', icon: 'database', label: 'Data Model' }
             ].filter(item => canAccessView(item.view));
             return GlassCard(`
                 <div class="flex justify-around items-center">
-                    ${navItems.map(item => `<button onclick="window.navigate('${item.view}')" class="p-2 rounded-xl ${state.view === item.view ? 'text-red-500 bg-red-500/10' : t.textSec}"><i data-lucide="${item.icon}" width="20"></i></button>`).join('')}
+                    ${navItems.map(item => `<button onclick="window.navigate('${item.view}')" class="p-2 rounded-xl flex flex-col items-center gap-1 ${state.view === item.view ? 'text-red-500 bg-red-500/10' : t.textSec}"><i data-lucide="${item.icon}" width="18"></i><span class="text-[10px] leading-none">${item.label}</span></button>`).join('')}
                 </div>
             `, `fixed bottom-3 left-4 right-4 max-w-md mx-auto !p-1.5 ${t.nav}`);
         }
@@ -1222,6 +1360,8 @@
                 html = renderReceive();
             } else if (state.view === 'history') {
                 html = renderHistory();
+            } else if (state.view === 'datamodel') {
+                html = renderDatamodel();
             }
             app.innerHTML = html + renderScanner() + renderFlash();
             lucide.createIcons();
