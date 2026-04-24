@@ -54,6 +54,7 @@
             html5QrCode: null,
             scannerManualValue: '',
             activeTaskId: null,
+            receiptPrefill: null,
             forms: {
                 move: { serial: '', toLocation: '', note: '' },
                 task: { serial: '', fromLocation: '', toLocation: '', notes: '' },
@@ -190,6 +191,26 @@
             render();
         }
 
+        function applyReceiptPrefill(code, sourceField = 'serial') {
+            const asset = getAssetByCode(code);
+            if (!asset) {
+                state.receiptPrefill = null;
+                return null;
+            }
+
+            state.forms.receipt = {
+                ...state.forms.receipt,
+                serial: asset.serial,
+                device: asset.device,
+                location: asset.location
+            };
+            state.receiptPrefill = {
+                serial: asset.serial,
+                sourceField
+            };
+            return asset;
+        }
+
         function moveAsset({ serial, toLocation, note = '', source = 'Direct', linkedTaskId = null }) {
             const asset = getAssetBySerial(serial);
             if (!asset) {
@@ -244,7 +265,7 @@
                 return;
             }
 
-            let asset = getAssetBySerial(serial);
+            let asset = getAssetByCode(serial) || getAssetByCode(device);
             const isNew = !asset;
 
             if (!asset) {
@@ -288,7 +309,8 @@
             });
 
             state.forms.receipt = { receiptNumber: '', externalNumber: '', serial: '', device: '', location: 'INK-01' };
-            setState({ db: state.db, forms: state.forms });
+            state.receiptPrefill = null;
+            setState({ db: state.db, forms: state.forms, receiptPrefill: state.receiptPrefill });
             setFlash(`Ontvangst opgeslagen voor ${serial}.`);
         }
 
@@ -340,7 +362,8 @@
                 receipt: { receiptNumber: '', externalNumber: '', serial: '', device: '', location: 'INK-01' }
             };
             state.activeTaskId = null;
-            setState({ db: state.db, forms: state.forms, activeTaskId: null });
+            state.receiptPrefill = null;
+            setState({ db: state.db, forms: state.forms, activeTaskId: null, receiptPrefill: null });
             setFlash('Mockupdata is teruggezet.');
         }
 
@@ -573,7 +596,7 @@
         function renderReceive() {
             const t = getTheme();
             const form = state.forms.receipt;
-            const linkedAsset = getAssetBySerial(form.serial);
+            const linkedAsset = getAssetByCode(form.serial) || getAssetByCode(form.device);
             return `
                 <div class="h-full flex flex-col px-4 pt-4 pb-2 overflow-hidden">
                     <div class="flex items-center gap-3 mb-4">
@@ -602,16 +625,17 @@
                                     <input value="${form.location}" oninput="window.updateReceiptField('location', this.value)" placeholder="Bijv. INK-01" class="w-full rounded-xl border px-3 py-3 outline-none ${t.input}" />
                                 </div>
                             </div>
+                            ${state.receiptPrefill ? `<div class="rounded-xl border border-emerald-400/30 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-100">Vooringevuld op basis van bekende machine (${state.receiptPrefill.sourceField === 'device' ? 'devicenummer' : 'serienummer'}). Je kunt velden nog aanpassen.</div>` : ''}
                             ${Button('Ontvangst registreren', 'window.submitReceipt()', 'success', 'package-check')}
                         </div>
                     `, 'mb-3')}
 
                     ${linkedAsset ? GlassCard(`
-                        <p class="text-xs uppercase tracking-[0.2em] ${t.textSec} mb-2">Bekende machine</p>
+                        <div class="flex items-center justify-between gap-2 mb-2"><p class="text-xs uppercase tracking-[0.2em] ${t.textSec}">Bekende machine</p>${state.receiptPrefill ? '<span class="text-[10px] px-2 py-1 rounded-full border border-emerald-400/30 bg-emerald-500/15 text-emerald-200">Vooringevuld</span>' : ''}</div>
                         <h3 class="font-bold mb-1">${linkedAsset.description}</h3>
                         <p class="text-sm ${t.textSec}">Huidige locatie: <span class="font-mono ${t.textMain}">${linkedAsset.location}</span></p>
                         <p class="text-sm ${t.textSec}">Huidig device: <span class="font-mono ${t.textMain}">${linkedAsset.device}</span></p>
-                    `, 'mb-3') : GlassCard(`<p class="text-sm ${t.textSec}">Nog geen bestaand serienummer gevonden. Bij registreren wordt een nieuwe machine aangemaakt in de mockup.</p>`, 'mb-3')}
+                    `, 'mb-3') : GlassCard(`<p class="text-sm ${t.textSec}">Nog geen bestaande machine gevonden. Bij registreren wordt een nieuwe machine aangemaakt in de mockup.</p>`, 'mb-3')}
 
                     <div class="flex-1 overflow-y-auto no-scrollbar pb-20 space-y-2">
                         ${state.db.receipts.slice(0, 8).map(item => GlassCard(`
@@ -738,10 +762,20 @@
                     if (asset) updateForm('task', 'fromLocation', asset.location);
                     break;
                 case 'receipt-serial':
-                    updateForm('receipt', 'serial', value);
+                    applyReceiptPrefill(value, 'serial');
+                    if (!state.receiptPrefill) {
+                        updateForm('receipt', 'serial', value);
+                    } else {
+                        render();
+                    }
                     break;
                 case 'receipt-device':
-                    updateForm('receipt', 'device', value);
+                    applyReceiptPrefill(value, 'device');
+                    if (!state.receiptPrefill) {
+                        updateForm('receipt', 'device', value);
+                    } else {
+                        render();
+                    }
                     break;
                 case 'receipt-location':
                     updateForm('receipt', 'location', value);
@@ -776,7 +810,19 @@
         window.toggleTheme = () => { state.darkMode = !state.darkMode; render(); };
         window.updateMoveField = (field, value) => updateForm('move', field, value);
         window.updateTaskField = (field, value) => updateForm('task', field, value);
-        window.updateReceiptField = (field, value) => updateForm('receipt', field, value);
+        window.updateReceiptField = (field, value) => {
+            updateForm('receipt', field, value);
+            if (field === 'serial' || field === 'device') {
+                const source = field === 'device' ? 'device' : 'serial';
+                const entered = normalizeCode(value);
+                if (entered) {
+                    applyReceiptPrefill(entered, source);
+                } else if (!normalizeCode(state.forms.receipt.serial) && !normalizeCode(state.forms.receipt.device)) {
+                    state.receiptPrefill = null;
+                }
+                render();
+            }
+        };
         window.updateScannerManual = (value) => { state.scannerManualValue = value; render(); };
         window.prefillMove = (serial) => { updateForm('move', 'serial', serial); setState({ view: 'move' }); };
         window.clearTaskLink = () => setState({ activeTaskId: null });
