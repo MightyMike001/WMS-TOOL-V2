@@ -67,6 +67,10 @@
             scannerManualValue: '',
             activeTaskId: null,
             receiptPrefill: null,
+            moveAssetSearch: '',
+            moveVisibleAssets: 6,
+            taskStatusFilter: 'all',
+            taskDateSort: 'newest',
             forms: {
                 move: { serial: '', toLocation: '', note: '' },
                 task: { serial: '', fromLocation: '', toLocation: '', notes: '' },
@@ -213,6 +217,32 @@
                 receiptsToday: state.db.receipts.length,
                 movesToday: state.db.history.filter(item => item.type === 'move').length
             };
+        }
+
+        function getFilteredAssets() {
+            const query = normalizeCode(state.moveAssetSearch);
+            if (!query) return state.db.assets;
+            return state.db.assets.filter(asset => {
+                const serial = normalizeCode(asset.serial);
+                const device = normalizeCode(asset.device);
+                const description = normalizeCode(asset.description);
+                return serial.includes(query) || device.includes(query) || description.includes(query);
+            });
+        }
+
+        function getFilteredSortedTasks() {
+            const statusFilter = state.taskStatusFilter;
+            const dateSort = state.taskDateSort;
+            const filtered = state.db.tasks.filter(task => {
+                if (statusFilter === 'all') return true;
+                return normalizeCode(task.status) === normalizeCode(statusFilter);
+            });
+
+            return filtered.sort((a, b) => {
+                const first = new Date(a.createdAt).getTime();
+                const second = new Date(b.createdAt).getTime();
+                return dateSort === 'oldest' ? first - second : second - first;
+            });
         }
 
         function updateForm(section, field, value) {
@@ -430,7 +460,20 @@
             };
             state.activeTaskId = null;
             state.receiptPrefill = null;
-            setState({ db: state.db, forms: state.forms, activeTaskId: null, receiptPrefill: null });
+            state.moveAssetSearch = '';
+            state.moveVisibleAssets = 6;
+            state.taskStatusFilter = 'all';
+            state.taskDateSort = 'newest';
+            setState({
+                db: state.db,
+                forms: state.forms,
+                activeTaskId: null,
+                receiptPrefill: null,
+                moveAssetSearch: '',
+                moveVisibleAssets: 6,
+                taskStatusFilter: 'all',
+                taskDateSort: 'newest'
+            });
             setFlash('Mockupdata is teruggezet.');
         }
 
@@ -529,6 +572,8 @@
             const form = state.forms.move;
             const asset = getAssetByCode(form.serial);
             const linkedTask = state.activeTaskId ? state.db.tasks.find(item => item.id === state.activeTaskId) : null;
+            const filteredAssets = getFilteredAssets();
+            const visibleAssets = filteredAssets.slice(0, state.moveVisibleAssets);
             return `
                 <div class="h-full flex flex-col px-4 pt-4 pb-2 overflow-hidden">
                     <div class="flex items-center gap-3 mb-4">
@@ -583,16 +628,27 @@
                         </div>
                     `, 'mb-3') : GlassCard(`<p class="text-sm ${t.textSec}">Nog geen bekende machine geladen. Scan een serienummer of devicenummer om de actuele locatie te tonen.</p>`, 'mb-3')}
 
+                    ${GlassCard(`
+                        <div class="space-y-2">
+                            <label class="text-xs uppercase tracking-[0.2em] ${t.textSec}">Zoek assets</label>
+                            <input value="${state.moveAssetSearch}" oninput="window.updateMoveAssetSearch(this.value)" placeholder="Zoek op serial, device of omschrijving" class="w-full rounded-xl border px-3 py-3 outline-none ${t.input}" />
+                            <p class="text-xs ${t.textSec}">${filteredAssets.length} resultaat/resultaten</p>
+                        </div>
+                    `, 'mb-3')}
+
                     <div class="flex-1 overflow-y-auto no-scrollbar pb-20 space-y-2">
-                        ${state.db.assets.slice(0, 6).map(assetItem => GlassCard(`
+                        ${visibleAssets.map(assetItem => GlassCard(`
                             <button onclick="window.prefillMove('${assetItem.serial}')" class="w-full text-left flex items-center gap-3">
                                 <div class="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center"><i data-lucide="scan-search" width="18"></i></div>
                                 <div class="min-w-0 flex-1">
                                     <div class="font-bold text-sm truncate">${assetItem.serial}</div>
                                     <div class="text-xs ${t.textSec}">${assetItem.location} • ${assetItem.device}</div>
+                                    <div class="text-xs ${t.textSec} truncate">${assetItem.description}</div>
                                 </div>
                             </button>
                         `)).join('')}
+                        ${filteredAssets.length === 0 ? GlassCard(`<p class="text-sm ${t.textSec}">Geen assets gevonden voor deze zoekopdracht.</p>`) : ''}
+                        ${state.moveVisibleAssets < filteredAssets.length ? `<div class="pt-1">${Button('Laad meer assets', 'window.loadMoreMoveAssets()', 'secondary', 'chevrons-down')}</div>` : ''}
                     </div>
                     ${renderNav()}
                 </div>
@@ -602,7 +658,7 @@
         function renderTasks() {
             const t = getTheme();
             const form = state.forms.task;
-            const tasks = state.db.tasks;
+            const tasks = getFilteredSortedTasks();
             return `
                 <div class="h-full flex flex-col px-4 pt-4 pb-2 overflow-hidden">
                     <div class="flex items-center gap-3 mb-4">
@@ -629,6 +685,26 @@
                         </div>
                     `, 'mb-3')}
 
+                    ${GlassCard(`
+                        <div class="grid grid-cols-2 gap-3">
+                            <div>
+                                <label class="text-xs uppercase tracking-[0.2em] ${t.textSec}">Status</label>
+                                <select onchange="window.setTaskStatusFilter(this.value)" class="mt-2 w-full rounded-xl border px-3 py-3 outline-none ${t.input}">
+                                    <option value="all" ${state.taskStatusFilter === 'all' ? 'selected' : ''}>Alle</option>
+                                    <option value="Open" ${state.taskStatusFilter === 'Open' ? 'selected' : ''}>Open</option>
+                                    <option value="Voltooid" ${state.taskStatusFilter === 'Voltooid' ? 'selected' : ''}>Voltooid</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="text-xs uppercase tracking-[0.2em] ${t.textSec}">Sortering</label>
+                                <select onchange="window.setTaskDateSort(this.value)" class="mt-2 w-full rounded-xl border px-3 py-3 outline-none ${t.input}">
+                                    <option value="newest" ${state.taskDateSort === 'newest' ? 'selected' : ''}>Nieuwste eerst</option>
+                                    <option value="oldest" ${state.taskDateSort === 'oldest' ? 'selected' : ''}>Oudste eerst</option>
+                                </select>
+                            </div>
+                        </div>
+                    `, 'mb-3')}
+
                     <div class="flex-1 overflow-y-auto no-scrollbar pb-20 space-y-2">
                         ${tasks.map(task => GlassCard(`
                             <div class="flex items-start gap-3">
@@ -648,6 +724,7 @@
                                 </div>
                             </div>
                         `)).join('')}
+                        ${tasks.length === 0 ? GlassCard(`<p class="text-sm ${t.textSec}">Geen opdrachten beschikbaar met huidige filters.</p>`) : ''}
                     </div>
                     ${renderNav()}
                 </div>
@@ -883,6 +960,23 @@
             }
         };
         window.updateScannerManual = (value) => { state.scannerManualValue = value; render(); };
+        window.updateMoveAssetSearch = (value) => {
+            state.moveAssetSearch = value;
+            state.moveVisibleAssets = 6;
+            render();
+        };
+        window.loadMoreMoveAssets = () => {
+            state.moveVisibleAssets += 6;
+            render();
+        };
+        window.setTaskStatusFilter = (value) => {
+            state.taskStatusFilter = value;
+            render();
+        };
+        window.setTaskDateSort = (value) => {
+            state.taskDateSort = value;
+            render();
+        };
         window.prefillMove = (serial) => { updateForm('move', 'serial', serial); setState({ view: 'move' }); };
         window.clearTaskLink = () => setState({ activeTaskId: null });
         window.useTask = useTask;
