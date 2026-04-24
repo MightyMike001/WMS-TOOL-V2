@@ -758,7 +758,7 @@
                     break;
                 case 'task-serial':
                     updateForm('task', 'serial', value);
-                    const asset = getAssetBySerial(value);
+                    const asset = getAssetByCode(value);
                     if (asset) updateForm('task', 'fromLocation', asset.location);
                     break;
                 case 'receipt-serial':
