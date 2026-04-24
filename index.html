@@ -56,6 +56,16 @@
             'DOCK-04'
         ];
 
+        const LOCATION_STATUS_CONFIG = {
+            defaultStatus: 'Beschikbaar',
+            rules: [
+                { prefix: 'W', status: 'Op werkvloer' },
+                { prefix: 'EXP', status: 'Expeditie' },
+                { prefix: 'INK', status: 'Ontvangst' },
+                { prefix: 'DOCK', status: 'Dock' }
+            ]
+        };
+
         const MOCK_USERS = [
             { initials: 'PLN', name: 'Iris Planner', role: 'planner' },
             { initials: 'EXP', name: 'Noah Expeditie', role: 'expeditie' },
@@ -123,6 +133,12 @@
 
         function normalizeCode(value) {
             return String(value || '').trim().replace(/\s+/g, '').toUpperCase();
+        }
+
+        function getStatusForLocation(locationCode) {
+            const normalizedLocation = normalizeCode(locationCode);
+            const matchedRule = LOCATION_STATUS_CONFIG.rules.find((rule) => normalizedLocation.startsWith(normalizeCode(rule.prefix)));
+            return matchedRule?.status || LOCATION_STATUS_CONFIG.defaultStatus;
         }
 
         function setState(updates) {
@@ -370,7 +386,7 @@
 
             const fromLocation = asset.location;
             asset.location = destination;
-            asset.status = destination.startsWith('W') ? 'Op werkvloer' : 'Beschikbaar';
+            asset.status = getStatusForLocation(destination);
             asset.updatedAt = nowIso();
 
             state.db.history.unshift({
