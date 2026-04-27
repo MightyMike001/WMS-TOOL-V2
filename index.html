@@ -87,6 +87,14 @@
             manager: 'bg-purple-500/15 border-purple-400/30 text-purple-100'
         };
 
+        const TAB_CONFIG = [
+            { tab: 'home', label: 'Home', icon: 'house', view: 'dashboard' },
+            { tab: 'ontdek', label: 'Ontdek', icon: 'search', view: 'move' },
+            { tab: 'meldingen', label: 'Meldingen', icon: 'bell', view: 'tasks' },
+            { tab: 'berichten', label: 'Berichten', icon: 'message-circle', view: 'history' },
+            { tab: 'profiel', label: 'Profiel', icon: 'user-round', view: 'receive' }
+        ];
+
         let state = {
             view: 'login',
             user: null,
@@ -288,6 +296,14 @@
         function canAccessView(view) {
             if (!state.user) return view === 'login';
             return getAllowedViews(state.user.role).includes(view);
+        }
+
+        function getTabConfigByView(view) {
+            return TAB_CONFIG.find(item => item.view === view) || TAB_CONFIG[0];
+        }
+
+        function getCurrentTab() {
+            return getTabConfigByView(state.view).tab;
         }
 
         function getVisibleTasks() {
@@ -1256,17 +1272,20 @@
 
         function renderNav() {
             const t = getTheme();
-            const navItems = [
-                { view: 'dashboard', icon: 'home', label: 'Home' },
-                { view: 'move', icon: 'move-right', label: 'Move' },
-                { view: 'tasks', icon: 'clipboard-list', label: 'Tasks' },
-                { view: 'receive', icon: 'package-check', label: 'Receive' },
-                { view: 'history', icon: 'history', label: 'History' },
-                { view: 'datamodel', icon: 'database', label: 'Data Model' }
-            ].filter(item => canAccessView(item.view));
+            const activeTab = getCurrentTab();
+            const navItems = TAB_CONFIG.map(item => ({
+                ...item,
+                isEnabled: canAccessView(item.view),
+                isActive: activeTab === item.tab
+            }));
             return GlassCard(`
                 <div class="flex justify-around items-center">
-                    ${navItems.map(item => `<button onclick="window.navigate('${item.view}')" class="p-2 rounded-xl flex flex-col items-center gap-1 ${state.view === item.view ? 'text-red-500 bg-red-500/10' : t.textSec}"><i data-lucide="${item.icon}" width="18"></i><span class="text-[10px] leading-none">${item.label}</span></button>`).join('')}
+                    ${navItems.map(item => `
+                        <button onclick="window.navigate('${item.tab}')" class="w-16 p-2 rounded-xl flex flex-col items-center gap-1 transition-all ${item.isActive ? 'text-violet-500 bg-violet-500/10' : `${t.textSec} ${item.isEnabled ? '' : 'opacity-40'}`}">
+                            <i data-lucide="${item.icon}" width="18"></i>
+                            <span class="text-[10px] leading-none">${item.label}</span>
+                        </button>
+                    `).join('')}
                 </div>
             `, `fixed bottom-3 left-4 right-4 max-w-md mx-auto !p-1.5 ${t.nav}`);
         }
@@ -1387,12 +1406,13 @@
             render();
         };
 
-        window.navigate = (view) => {
-            if (!canAccessView(view)) {
+        window.navigate = (tabOrView) => {
+            const mappedView = TAB_CONFIG.find(item => item.tab === tabOrView)?.view || tabOrView;
+            if (!canAccessView(mappedView)) {
                 setFlash('Deze rol heeft geen toegang tot dit onderdeel.', 'warning');
                 return;
             }
-            setState({ view });
+            setState({ view: mappedView });
         };
         window.toggleTheme = () => { state.darkMode = !state.darkMode; render(); };
         window.updateLocationField = (section, field, value) => updateForm(section, field, value);
