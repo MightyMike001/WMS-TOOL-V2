@@ -104,6 +104,7 @@
             moveVisibleAssets: 6,
             taskStatusFilter: 'all',
             taskDateSort: 'newest',
+            showNavOverflow: false,
             showExportModal: false,
             exportCopied: false,
             forms: {
@@ -724,19 +725,17 @@
             ].filter(card => allowedViews.includes(card.view));
             return `
                 <div class="h-full flex flex-col px-4 pt-4 pb-2 overflow-hidden">
-                    <div class="flex items-center justify-between mb-4">
-                        <div>
-                            <p class="text-xs uppercase tracking-[0.25em] ${t.textSec}">Operator</p>
-                            <div class="flex items-center gap-2">
-                                <h1 class="text-xl font-bold ${t.textMain}">${state.user.initials}</h1>
+                    ${renderTopNav('Dashboard', [
+                        `<div class="text-right">
+                            <p class="text-[10px] uppercase tracking-[0.2em] ${t.textSec}">Operator</p>
+                            <div class="flex items-center justify-end gap-2 mt-1">
+                                <span class="text-sm font-bold ${t.textMain}">${state.user.initials}</span>
                                 <span class="text-[11px] px-2 py-1 rounded-full border ${getRoleStyle(role)}">${getRoleLabel(role)}</span>
                             </div>
-                        </div>
-                        <div class="flex items-center gap-2">
-                            <button onclick="window.toggleTheme()" class="p-2 rounded-xl border ${t.chip}"><i data-lucide="${state.darkMode ? 'sun' : 'moon'}" width="18"></i></button>
-                            <button onclick="window.logout()" class="p-2 rounded-xl border ${t.chip}"><i data-lucide="log-out" width="18"></i></button>
-                        </div>
-                    </div>
+                        </div>`,
+                        `<button onclick="window.toggleTheme()" class="p-2 rounded-xl border ${t.chip}" aria-label="Thema wisselen"><i data-lucide="${state.darkMode ? 'sun' : 'moon'}" width="18"></i></button>`,
+                        `<button onclick="window.logout()" class="p-2 rounded-xl border ${t.chip}" aria-label="Uitloggen"><i data-lucide="log-out" width="18"></i></button>`
+                    ])}
 
                     ${GlassCard(`
                         <div class="flex items-start justify-between gap-3 mb-4">
@@ -810,13 +809,9 @@
             const visibleAssets = filteredAssets.slice(0, state.moveVisibleAssets);
             return `
                 <div class="h-full flex flex-col px-4 pt-4 pb-2 overflow-hidden">
-                    <div class="flex items-center gap-3 mb-4">
-                        <button onclick="window.navigate('dashboard')" class="p-2 rounded-xl border ${t.chip}"><i data-lucide="arrow-left" width="18"></i></button>
-                        <div>
-                            <h1 class="text-lg font-bold ${t.textMain}">Verplaatsen</h1>
-                            <p class="text-xs ${t.textSec}">Scan of typ serienummer en doellocatie.</p>
-                        </div>
-                    </div>
+                    ${renderTopNav('Verplaatsen', [
+                        `<button onclick="window.navigate('dashboard')" class="p-2 rounded-xl border ${t.chip}" aria-label="Terug naar dashboard"><i data-lucide="arrow-left" width="18"></i></button>`
+                    ], 'Scan of typ serienummer en doellocatie.')}
 
                     ${linkedTask ? GlassCard(`
                         <div class="flex items-start justify-between gap-3">
@@ -898,13 +893,9 @@
             const availableAssignees = MOCK_USERS.filter(user => user.role === 'monteur' || user.role === 'expeditie');
             return `
                 <div class="h-full flex flex-col px-4 pt-4 pb-2 overflow-hidden">
-                    <div class="flex items-center gap-3 mb-4">
-                        <button onclick="window.navigate('dashboard')" class="p-2 rounded-xl border ${t.chip}"><i data-lucide="arrow-left" width="18"></i></button>
-                        <div>
-                            <h1 class="text-lg font-bold ${t.textMain}">Opdrachten</h1>
-                            <p class="text-xs ${t.textSec}">${state.user.role === 'monteur' ? 'Alleen jouw toegewezen taken.' : 'Aanvragen van collega\'s voor verplaatsingen.'}</p>
-                        </div>
-                    </div>
+                    ${renderTopNav('Opdrachten', [
+                        `<button onclick="window.navigate('dashboard')" class="p-2 rounded-xl border ${t.chip}" aria-label="Terug naar dashboard"><i data-lucide="arrow-left" width="18"></i></button>`
+                    ], state.user.role === 'monteur' ? 'Alleen jouw toegewezen taken.' : 'Aanvragen van collega\'s voor verplaatsingen.')}
 
                     ${canCreate ? GlassCard(`
                         <div class="space-y-3">
@@ -978,13 +969,9 @@
             const linkedAsset = getAssetByCode(form.serial) || getAssetByCode(form.device);
             return `
                 <div class="h-full flex flex-col px-4 pt-4 pb-2 overflow-hidden">
-                    <div class="flex items-center gap-3 mb-4">
-                        <button onclick="window.navigate('dashboard')" class="p-2 rounded-xl border ${t.chip}"><i data-lucide="arrow-left" width="18"></i></button>
-                        <div>
-                            <h1 class="text-lg font-bold ${t.textMain}">Goederenontvangst</h1>
-                            <p class="text-xs ${t.textSec}">Pakbon en extern nummer koppelen aan device en serienummer.</p>
-                        </div>
-                    </div>
+                    ${renderTopNav('Goederenontvangst', [
+                        `<button onclick="window.navigate('dashboard')" class="p-2 rounded-xl border ${t.chip}" aria-label="Terug naar dashboard"><i data-lucide="arrow-left" width="18"></i></button>`
+                    ], 'Pakbon en extern nummer koppelen aan device en serienummer.')}
 
                     ${GlassCard(`
                         <div class="space-y-3">
@@ -1042,13 +1029,9 @@
             const t = getTheme();
             return `
                 <div class="h-full flex flex-col px-4 pt-4 pb-2 overflow-hidden">
-                    <div class="flex items-center gap-3 mb-4">
-                        <button onclick="window.navigate('dashboard')" class="p-2 rounded-xl border ${t.chip}"><i data-lucide="arrow-left" width="18"></i></button>
-                        <div>
-                            <h1 class="text-lg font-bold ${t.textMain}">Historie</h1>
-                            <p class="text-xs ${t.textSec}">Laatste verplaatsingen en ontvangsten.</p>
-                        </div>
-                    </div>
+                    ${renderTopNav('Historie', [
+                        `<button onclick="window.navigate('dashboard')" class="p-2 rounded-xl border ${t.chip}" aria-label="Terug naar dashboard"><i data-lucide="arrow-left" width="18"></i></button>`
+                    ], 'Laatste verplaatsingen en ontvangsten.')}
                     <div class="flex-1 overflow-y-auto no-scrollbar pb-20 space-y-2">
                         ${state.db.history.map(item => GlassCard(`
                             <div class="flex items-start gap-3">
@@ -1144,13 +1127,9 @@
 
             return `
                 <div class="h-full flex flex-col px-4 pt-4 pb-2 overflow-hidden">
-                    <div class="flex items-center gap-3 mb-4">
-                        <button onclick="window.navigate('dashboard')" class="p-2 rounded-xl border ${t.chip}"><i data-lucide="arrow-left" width="18"></i></button>
-                        <div>
-                            <h1 class="text-lg font-bold ${t.textMain}">Data Model</h1>
-                            <p class="text-xs ${t.textSec}">Dataverse-ready overzicht van tabellen, kolommen en relaties.</p>
-                        </div>
-                    </div>
+                    ${renderTopNav('Data Model', [
+                        `<button onclick="window.navigate('dashboard')" class="p-2 rounded-xl border ${t.chip}" aria-label="Terug naar dashboard"><i data-lucide="arrow-left" width="18"></i></button>`
+                    ], 'Dataverse-ready overzicht van tabellen, kolommen en relaties.')}
 
                     ${GlassCard(`
                         <div class="flex items-start justify-between gap-3">
@@ -1256,19 +1235,48 @@
 
         function renderNav() {
             const t = getTheme();
-            const navItems = [
+            const primaryItems = [
                 { view: 'dashboard', icon: 'home', label: 'Home' },
                 { view: 'move', icon: 'move-right', label: 'Move' },
                 { view: 'tasks', icon: 'clipboard-list', label: 'Tasks' },
                 { view: 'receive', icon: 'package-check', label: 'Receive' },
-                { view: 'history', icon: 'history', label: 'History' },
+                { view: 'history', icon: 'history', label: 'History' }
+            ].filter(item => canAccessView(item.view));
+            const overflowItems = [
                 { view: 'datamodel', icon: 'database', label: 'Data Model' }
             ].filter(item => canAccessView(item.view));
+            const isOverflowActive = overflowItems.some(item => item.view === state.view);
             return GlassCard(`
-                <div class="flex justify-around items-center">
-                    ${navItems.map(item => `<button onclick="window.navigate('${item.view}')" class="p-2 rounded-xl flex flex-col items-center gap-1 ${state.view === item.view ? 'text-red-500 bg-red-500/10' : t.textSec}"><i data-lucide="${item.icon}" width="18"></i><span class="text-[10px] leading-none">${item.label}</span></button>`).join('')}
+                <div class="relative flex justify-around items-center gap-1">
+                    ${primaryItems.map(item => `<button onclick="window.navigate('${item.view}')" class="p-2 min-w-[58px] rounded-xl border flex flex-col items-center gap-1 transition-colors ${state.view === item.view ? 'text-red-500 border-red-500/50 bg-red-500/15' : `${t.textSec} border-transparent hover:border-white/15`}"><i data-lucide="${item.icon}" width="18"></i><span class="text-[10px] leading-none">${item.label}</span></button>`).join('')}
+                    ${overflowItems.length ? `
+                        <div class="relative">
+                            <button onclick="window.toggleNavOverflow()" class="p-2 min-w-[58px] rounded-xl border flex flex-col items-center gap-1 transition-colors ${isOverflowActive ? 'text-red-500 border-red-500/50 bg-red-500/15' : `${t.textSec} border-transparent hover:border-white/15`}">
+                                <i data-lucide="ellipsis" width="18"></i>
+                                <span class="text-[10px] leading-none">Meer</span>
+                            </button>
+                            ${state.showNavOverflow ? `
+                                <div class="absolute bottom-14 right-0 min-w-[168px] rounded-xl border ${t.glass} backdrop-blur-xl p-1.5 z-20">
+                                    ${overflowItems.map(item => `<button onclick="window.navigate('${item.view}')" class="w-full text-left px-3 py-2 rounded-lg text-sm flex items-center gap-2 ${state.view === item.view ? 'text-red-500 bg-red-500/10' : `${t.textMain} hover:bg-white/10`}"><i data-lucide="${item.icon}" width="15"></i><span>${item.label}</span></button>`).join('')}
+                                </div>
+                            ` : ''}
+                        </div>
+                    ` : ''}
                 </div>
             `, `fixed bottom-3 left-4 right-4 max-w-md mx-auto !p-1.5 ${t.nav}`);
+        }
+
+        function renderTopNav(title, actions = [], subtitle = '') {
+            const t = getTheme();
+            return `
+                <div class="flex items-start justify-between gap-3 mb-4">
+                    <div class="min-w-0">
+                        <h1 class="text-lg font-bold ${t.textMain}">${title}</h1>
+                        ${subtitle ? `<p class="text-xs ${t.textSec}">${subtitle}</p>` : ''}
+                    </div>
+                    ${actions.length ? `<div class="flex items-center gap-2">${actions.join('')}</div>` : ''}
+                </div>
+            `;
         }
 
         function renderScanner() {
@@ -1392,7 +1400,11 @@
                 setFlash('Deze rol heeft geen toegang tot dit onderdeel.', 'warning');
                 return;
             }
-            setState({ view });
+            setState({ view, showNavOverflow: false });
+        };
+        window.toggleNavOverflow = () => {
+            state.showNavOverflow = !state.showNavOverflow;
+            render();
         };
         window.toggleTheme = () => { state.darkMode = !state.darkMode; render(); };
         window.updateLocationField = (section, field, value) => updateForm(section, field, value);
