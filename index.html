@@ -89,6 +89,14 @@
     <div id="app" class="relative z-10 h-full w-full max-w-md mx-auto"></div>
 
     <script>
+        /*
+         * Semantische component states:
+         * - button: primary/secondary/success + default/hover/disabled, toegepast in Button().
+         * - input: default/focus/error/disabled, centraal toegepast via getInputValidationClasses() en renderFieldError().
+         * - feedback: success/info/warning/error, toegepast in renderFlash().
+         * Form-validatie (validation.move/task/receipt) gebruikt dezelfde input-state definities
+         * zodat fouten en focus-gedrag op alle schermen consistent zijn.
+         */
         const STORAGE_KEY = 'wms_mockup_v1_state';
 
         const DEFAULT_DB = {
@@ -153,6 +161,26 @@
             expeditie: 'bg-emerald-500/15 border-emerald-400/30 text-emerald-200',
             monteur: 'bg-amber-500/15 border-amber-400/30 text-amber-100',
             manager: 'bg-purple-500/15 border-purple-400/30 text-purple-100'
+        };
+
+        const COMPONENT_STATES = {
+            button: {
+                primary: { default: 'btn-accent', disabled: 'opacity-50 cursor-not-allowed pointer-events-none' },
+                secondary: { default: 'bg-chip text-main border-default hover:bg-card', disabled: 'opacity-50 cursor-not-allowed pointer-events-none' },
+                success: { default: 'btn-accent-soft', disabled: 'opacity-50 cursor-not-allowed pointer-events-none' }
+            },
+            input: {
+                default: 'focus:ring-1 focus:ring-accent focus:border-accent',
+                focus: 'focus:ring-1 focus:ring-accent focus:border-accent',
+                error: 'border-red-400/80 ring-1 ring-red-400/60 focus:ring-red-400/70 focus:border-red-400',
+                disabled: 'opacity-55 cursor-not-allowed pointer-events-none'
+            },
+            feedback: {
+                success: 'bg-emerald-500/15 border-emerald-500/30 text-emerald-100',
+                info: 'bg-sky-500/15 border-sky-500/30 text-sky-100',
+                warning: 'bg-amber-500/15 border-amber-500/30 text-amber-100',
+                error: 'bg-red-500/15 border-red-500/30 text-red-100'
+            }
         };
 
         let state = {
@@ -261,14 +289,20 @@
             `;
         }
 
-        function Button(label, onClick, variant = 'primary', icon = '') {
-            const variants = {
-                primary: 'btn-accent',
-                secondary: 'bg-chip text-main border-default hover:bg-card',
-                success: 'btn-accent-soft'
-            };
+        function getButtonClasses(variant = 'primary', componentState = 'default') {
+            const variantConfig = COMPONENT_STATES.button[variant] || COMPONENT_STATES.button.primary;
+            if (componentState === 'disabled') {
+                return `${variantConfig.default} ${variantConfig.disabled}`;
+            }
+            return variantConfig.default;
+        }
+
+        function Button(label, onClick, variant = 'primary', icon = '', options = {}) {
+            const { state: componentState = 'default', disabled = false } = options;
+            const finalState = disabled ? 'disabled' : componentState;
+            const disabledAttr = finalState === 'disabled' ? 'disabled aria-disabled="true"' : '';
             return `
-                <button onclick="${onClick}" class="w-full px-4 py-3 rounded-xl border font-semibold flex items-center justify-center gap-2 transition-all active:scale-95 ${variants[variant]}">
+                <button onclick="${onClick}" ${disabledAttr} class="w-full px-4 py-3 rounded-xl border font-semibold flex items-center justify-center gap-2 transition-all active:scale-95 ${getButtonClasses(variant, finalState)}">
                     ${icon ? `<i data-lucide="${icon}" width="18"></i>` : ''}
                     <span>${label}</span>
                 </button>
@@ -458,18 +492,25 @@
             return state.validation?.[section]?.[field] || '';
         }
 
-        function getInputValidationClasses(section, field) {
-            const hasError = Boolean(getFieldError(section, field));
-            if (!hasError) return '';
-            return state.darkMode
-                ? 'border-accent ring-1 ring-accent'
-                : 'border-accent ring-1 ring-accent';
+        function getInputState(section, field, options = {}) {
+            if (options.disabled) return 'disabled';
+            if (getFieldError(section, field)) return 'error';
+            return 'default';
+        }
+
+        function getInputStateClasses(inputState = 'default') {
+            return COMPONENT_STATES.input[inputState] || COMPONENT_STATES.input.default;
+        }
+
+        function getInputValidationClasses(section, field, options = {}) {
+            const inputState = getInputState(section, field, options);
+            return getInputStateClasses(inputState);
         }
 
         function renderFieldError(section, field) {
             const message = getFieldError(section, field);
             if (!message) return '';
-            return `<p class="mt-1 text-xs text-accent">${message}</p>`;
+            return `<p class="mt-1 text-xs text-red-300">${message}</p>`;
         }
 
         function getMissingFieldErrors(formValues, requiredFields) {
@@ -1419,9 +1460,7 @@
 
         function renderFlash() {
             if (!state.flash) return '';
-            const palette = state.flash.variant === 'warning'
-                ? 'bg-amber-500/15 border-amber-500/30 text-amber-100'
-                : 'bg-emerald-500/15 border-emerald-500/30 text-emerald-100';
+            const palette = COMPONENT_STATES.feedback[state.flash.variant] || COMPONENT_STATES.feedback.info;
             return `
                 <div class="fixed top-4 left-4 right-4 z-50 max-w-md mx-auto">
                     <div class="rounded-2xl border px-4 py-3 backdrop-blur-xl ${palette}">${state.flash.message}</div>
