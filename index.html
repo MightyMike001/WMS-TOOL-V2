@@ -874,12 +874,13 @@
             const linkedTask = state.activeTaskId ? state.db.tasks.find(item => item.id === state.activeTaskId) : null;
             const filteredAssets = getFilteredAssets();
             const visibleAssets = filteredAssets.slice(0, state.moveVisibleAssets);
-            return `
-                <div class="h-full flex flex-col px-4 pt-4 pb-2 overflow-hidden">
-                    ${renderTopNav('Verplaatsen', [
-                        `<button onclick="window.navigate('dashboard')" class="p-2 rounded-xl border ${t.chip}" aria-label="Terug naar dashboard"><i data-lucide="arrow-left" width="18"></i></button>`
-                    ], 'Scan of typ serienummer en doellocatie.')}
-
+            return renderScreen({
+                title: 'Verplaatsen',
+                subtitle: 'Scan of typ serienummer en doellocatie.',
+                topActions: [
+                    `<button onclick="window.navigate('dashboard')" class="p-2 rounded-xl border ${t.chip}" aria-label="Terug naar dashboard"><i data-lucide="arrow-left" width="18"></i></button>`
+                ],
+                content: `
                     ${linkedTask ? GlassCard(`
                         <div class="flex items-start justify-between gap-3">
                             <div>
@@ -933,7 +934,7 @@
                         </div>
                     `, 'mb-3')}
 
-                    <div class="flex-1 overflow-y-auto no-scrollbar pb-20 space-y-2">
+                    <div class="space-y-2">
                         ${visibleAssets.map(assetItem => GlassCard(`
                             <button onclick="window.prefillMove('${assetItem.serial}')" class="w-full text-left flex items-center gap-3">
                                 <div class="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center"><i data-lucide="scan-search" width="18"></i></div>
@@ -947,9 +948,8 @@
                         ${filteredAssets.length === 0 ? GlassCard(`<p class="text-sm ${t.textSec}">Geen assets gevonden voor deze zoekopdracht.</p>`) : ''}
                         ${state.moveVisibleAssets < filteredAssets.length ? `<div class="pt-1">${Button('Laad meer assets', 'window.loadMoreMoveAssets()', 'secondary', 'chevrons-down')}</div>` : ''}
                     </div>
-                    ${renderNav()}
-                </div>
-            `;
+                `
+            });
         }
 
         function renderTasks() {
@@ -958,12 +958,13 @@
             const tasks = getFilteredSortedTasks();
             const canCreate = state.user.role === 'planner';
             const availableAssignees = MOCK_USERS.filter(user => user.role === 'monteur' || user.role === 'expeditie');
-            return `
-                <div class="h-full flex flex-col px-4 pt-4 pb-2 overflow-hidden">
-                    ${renderTopNav('Opdrachten', [
-                        `<button onclick="window.navigate('dashboard')" class="p-2 rounded-xl border ${t.chip}" aria-label="Terug naar dashboard"><i data-lucide="arrow-left" width="18"></i></button>`
-                    ], state.user.role === 'monteur' ? 'Alleen jouw toegewezen taken.' : 'Aanvragen van collega\'s voor verplaatsingen.')}
-
+            return renderScreen({
+                title: 'Opdrachten',
+                subtitle: state.user.role === 'monteur' ? 'Alleen jouw toegewezen taken.' : 'Aanvragen van collega\'s voor verplaatsingen.',
+                topActions: [
+                    `<button onclick="window.navigate('dashboard')" class="p-2 rounded-xl border ${t.chip}" aria-label="Terug naar dashboard"><i data-lucide="arrow-left" width="18"></i></button>`
+                ],
+                content: `
                     ${canCreate ? GlassCard(`
                         <div class="space-y-3">
                             <div class="flex items-center justify-between gap-2">
@@ -1004,7 +1005,7 @@
                         </div>
                     `, 'mb-3')}
 
-                    <div class="flex-1 overflow-y-auto no-scrollbar pb-20 space-y-2">
+                    <div class="space-y-2">
                         ${tasks.map(task => GlassCard(`
                             <div class="flex items-start gap-3">
                                 <div class="w-10 h-10 rounded-xl flex items-center justify-center ${task.status === 'Open' ? 'bg-blue-500/20 text-blue-400' : 'bg-emerald-500/20 text-emerald-400'}">
@@ -1025,21 +1026,21 @@
                         `)).join('')}
                         ${tasks.length === 0 ? GlassCard(`<p class="text-sm ${t.textSec}">Geen opdrachten beschikbaar met huidige filters.</p>`) : ''}
                     </div>
-                    ${renderNav()}
-                </div>
-            `;
+                `
+            });
         }
 
         function renderReceive() {
             const t = getTheme();
             const form = state.forms.receipt;
             const linkedAsset = getAssetByCode(form.serial) || getAssetByCode(form.device);
-            return `
-                <div class="h-full flex flex-col px-4 pt-4 pb-2 overflow-hidden">
-                    ${renderTopNav('Goederenontvangst', [
-                        `<button onclick="window.navigate('dashboard')" class="p-2 rounded-xl border ${t.chip}" aria-label="Terug naar dashboard"><i data-lucide="arrow-left" width="18"></i></button>`
-                    ], 'Pakbon en extern nummer koppelen aan device en serienummer.')}
-
+            return renderScreen({
+                title: 'Goederenontvangst',
+                subtitle: 'Pakbon en extern nummer koppelen aan device en serienummer.',
+                topActions: [
+                    `<button onclick="window.navigate('dashboard')" class="p-2 rounded-xl border ${t.chip}" aria-label="Terug naar dashboard"><i data-lucide="arrow-left" width="18"></i></button>`
+                ],
+                content: `
                     ${GlassCard(`
                         <div class="space-y-3">
                             <div>
@@ -1075,7 +1076,7 @@
                         <p class="text-sm ${t.textSec}">Huidig device: <span class="font-mono ${t.textMain}">${linkedAsset.device}</span></p>
                     `, 'mb-3') : GlassCard(`<p class="text-sm ${t.textSec}">Nog geen bestaande machine gevonden. Bij registreren wordt een nieuwe machine aangemaakt in de mockup.</p>`, 'mb-3')}
 
-                    <div class="flex-1 overflow-y-auto no-scrollbar pb-20 space-y-2">
+                    <div class="space-y-2">
                         ${state.db.receipts.slice(0, 8).map(item => GlassCard(`
                             <div class="flex items-start gap-3">
                                 <div class="w-10 h-10 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center"><i data-lucide="package-check" width="18"></i></div>
@@ -1087,19 +1088,20 @@
                             </div>
                         `)).join('')}
                     </div>
-                    ${renderNav()}
-                </div>
-            `;
+                `
+            });
         }
 
         function renderHistory() {
             const t = getTheme();
-            return `
-                <div class="h-full flex flex-col px-4 pt-4 pb-2 overflow-hidden">
-                    ${renderTopNav('Historie', [
-                        `<button onclick="window.navigate('dashboard')" class="p-2 rounded-xl border ${t.chip}" aria-label="Terug naar dashboard"><i data-lucide="arrow-left" width="18"></i></button>`
-                    ], 'Laatste verplaatsingen en ontvangsten.')}
-                    <div class="flex-1 overflow-y-auto no-scrollbar pb-20 space-y-2">
+            return renderScreen({
+                title: 'Historie',
+                subtitle: 'Laatste verplaatsingen en ontvangsten.',
+                topActions: [
+                    `<button onclick="window.navigate('dashboard')" class="p-2 rounded-xl border ${t.chip}" aria-label="Terug naar dashboard"><i data-lucide="arrow-left" width="18"></i></button>`
+                ],
+                content: `
+                    <div class="space-y-2">
                         ${state.db.history.map(item => GlassCard(`
                             <div class="flex items-start gap-3">
                                 <div class="w-10 h-10 rounded-xl flex items-center justify-center ${item.type === 'move' ? 'icon-badge-accent' : 'bg-accent-subtle text-accent'}">
@@ -1117,9 +1119,8 @@
                             </div>
                         `)).join('')}
                     </div>
-                    ${renderNav()}
-                </div>
-            `;
+                `
+            });
         }
 
         function renderDatamodel() {
@@ -1192,12 +1193,13 @@
                 'Receipts.serial ↔ Assets.serial (één-op-veel): bij ontvangst kan asset nieuw worden aangemaakt.'
             ];
 
-            return `
-                <div class="h-full flex flex-col px-4 pt-4 pb-2 overflow-hidden">
-                    ${renderTopNav('Data Model', [
-                        `<button onclick="window.navigate('dashboard')" class="p-2 rounded-xl border ${t.chip}" aria-label="Terug naar dashboard"><i data-lucide="arrow-left" width="18"></i></button>`
-                    ], 'Dataverse-ready overzicht van tabellen, kolommen en relaties.')}
-
+            return renderScreen({
+                title: 'Data Model',
+                subtitle: 'Dataverse-ready overzicht van tabellen, kolommen en relaties.',
+                topActions: [
+                    `<button onclick="window.navigate('dashboard')" class="p-2 rounded-xl border ${t.chip}" aria-label="Terug naar dashboard"><i data-lucide="arrow-left" width="18"></i></button>`
+                ],
+                content: `
                     ${GlassCard(`
                         <div class="flex items-start justify-between gap-3">
                             <div>
@@ -1229,7 +1231,7 @@
                         </div>
                     `, 'mb-3')}
 
-                    <div class="flex-1 overflow-y-auto no-scrollbar pb-20 space-y-3">
+                    <div class="space-y-3">
                         ${entities.map(entity => GlassCard(`
                             <div class="space-y-3">
                                 <div class="flex items-start justify-between gap-3">
@@ -1260,9 +1262,8 @@
                             </div>
                         `)).join('')}
                     </div>
-                    ${renderNav()}
-                </div>
-            `;
+                `
+            });
         }
 
         function renderExportModal() {
@@ -1330,7 +1331,23 @@
                         </div>
                     ` : ''}
                 </div>
-            `, `fixed bottom-3 left-4 right-4 max-w-md mx-auto !p-1.5 ${t.nav}`);
+            `, `!p-1.5 ${t.nav}`);
+        }
+
+        function renderScreen({ title, subtitle = '', content = '', topActions = [] }) {
+            return `
+                <div class="h-full flex flex-col overflow-hidden">
+                    <div class="shrink-0 px-4 pt-4">
+                        ${renderTopNav(title, topActions, subtitle)}
+                    </div>
+                    <div class="flex-1 overflow-y-auto no-scrollbar px-4 pb-4">
+                        ${content}
+                    </div>
+                    <div class="shrink-0 px-4 pt-2 pb-2">
+                        ${renderNav()}
+                    </div>
+                </div>
+            `;
         }
 
         function renderTopNav(title, actions = [], subtitle = '') {
