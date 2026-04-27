@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>WMS Mockup V1</title>
+    <title>WMS App</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
     <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
@@ -13,9 +13,9 @@
         #reader video { object-fit: cover; width: 100% !important; height: 100% !important; border-radius: 1.5rem; }
     </style>
 </head>
-<body class="bg-[#050505] text-white h-screen w-screen overflow-hidden font-sans selection:bg-red-500/30">
+<body class="bg-[#050505] text-white h-screen w-screen overflow-hidden font-sans selection:bg-violet-500/30">
     <div class="fixed inset-0 pointer-events-none overflow-hidden">
-        <div class="absolute -top-[20%] -left-[10%] w-[70%] h-[50%] bg-red-600/20 rounded-full blur-[120px] animate-pulse mix-blend-screen"></div>
+        <div class="absolute -top-[20%] -left-[10%] w-[70%] h-[50%] bg-violet-600/25 rounded-full blur-[120px] animate-pulse mix-blend-screen"></div>
         <div class="absolute top-[40%] -right-[10%] w-[60%] h-[60%] bg-blue-600/10 rounded-full blur-[120px] mix-blend-screen"></div>
     </div>
     <div id="app" class="relative z-10 h-full w-full max-w-md mx-auto"></div>
@@ -181,7 +181,7 @@
 
         function syncBodyTheme() {
             const body = document.body;
-            body.className = `${state.darkMode ? 'bg-[#050505] text-white' : 'bg-[#f3f6fb] text-slate-900'} h-screen w-screen overflow-hidden font-sans selection:bg-red-500/30`;
+            body.className = `${state.darkMode ? 'bg-[#050505] text-white' : 'bg-[#f3f6fb] text-slate-900'} h-screen w-screen overflow-hidden font-sans selection:bg-violet-500/30`;
         }
 
         function GlassCard(content, extraClasses = '') {
@@ -196,7 +196,7 @@
 
         function Button(label, onClick, variant = 'primary', icon = '') {
             const variants = {
-                primary: 'bg-red-600 text-white border-red-500 hover:bg-red-500',
+                primary: 'bg-violet-600 text-white border-violet-500 hover:bg-violet-500',
                 secondary: state.darkMode ? 'bg-white/10 text-white border-white/15 hover:bg-white/15' : 'bg-white text-slate-900 border-slate-200 hover:bg-slate-50',
                 success: 'bg-emerald-600 text-white border-emerald-500 hover:bg-emerald-500'
             };
@@ -395,14 +395,14 @@
             const hasError = Boolean(getFieldError(section, field));
             if (!hasError) return '';
             return state.darkMode
-                ? 'border-red-400 ring-1 ring-red-400/70'
-                : 'border-red-500 ring-1 ring-red-500/40';
+                ? 'border-violet-400 ring-1 ring-violet-400/70'
+                : 'border-violet-500 ring-1 ring-violet-500/40';
         }
 
         function renderFieldError(section, field) {
             const message = getFieldError(section, field);
             if (!message) return '';
-            return `<p class="mt-1 text-xs text-red-300">${message}</p>`;
+            return `<p class="mt-1 text-xs text-violet-300">${message}</p>`;
         }
 
         function getMissingFieldErrors(formValues, requiredFields) {
@@ -683,12 +683,12 @@
             return `
                 <div class="h-full flex flex-col items-center justify-center p-6">
                     <div class="mb-8 relative">
-                        <div class="absolute inset-0 bg-red-500 blur-3xl opacity-20 rounded-full animate-pulse"></div>
+                        <div class="absolute inset-0 bg-violet-500 blur-3xl opacity-20 rounded-full animate-pulse"></div>
                         <div class="w-20 h-20 rounded-2xl flex items-center justify-center ${state.darkMode ? 'bg-white/10 border border-white/20' : 'bg-white border border-slate-200 shadow-xl'}">
-                            <i data-lucide="scan-line" class="text-red-500" width="40" height="40"></i>
+                            <i data-lucide="scan-line" class="text-violet-500" width="40" height="40"></i>
                         </div>
                     </div>
-                    <h1 class="text-2xl font-bold mb-2 ${t.textMain}">WMS Mockup V1</h1>
+                    <h1 class="text-2xl font-bold mb-2 ${t.textMain}">WMS App</h1>
                     <p class="text-sm mb-6 text-center ${t.textSec}">Mockup voor expeditie: verplaatsen, opdrachten en goederenontvangst.</p>
                     ${GlassCard(`
                         <div class="flex flex-col gap-4">
@@ -697,7 +697,7 @@
                                 <option value="">Kies gebruiker uit lijst</option>
                                 ${MOCK_USERS.map(user => `<option value="${user.initials}" ${state.loginInitials === user.initials ? 'selected' : ''}>${user.initials} · ${user.name} (${getRoleLabel(user.role)})</option>`).join('')}
                             </select>
-                            <input type="text" value="${state.loginInitials || ''}" oninput="window.handleInitials(this.value)" placeholder="EXP" maxlength="4" class="w-full bg-transparent text-center text-4xl font-mono font-bold outline-none border-b-2 py-3 tracking-[0.4em] uppercase placeholder:opacity-20 ${state.darkMode ? 'text-white border-white/20 focus:border-red-500' : 'text-slate-900 border-slate-300 focus:border-red-500'}" />
+                            <input type="text" value="${state.loginInitials || ''}" oninput="window.handleInitials(this.value)" placeholder="EXP" maxlength="4" class="w-full bg-transparent text-center text-4xl font-mono font-bold outline-none border-b-2 py-3 tracking-[0.4em] uppercase placeholder:opacity-20 ${state.darkMode ? 'text-white border-white/20 focus:border-violet-500' : 'text-slate-900 border-slate-300 focus:border-violet-500'}" />
                             <div class="flex items-center justify-between rounded-xl border ${t.chip} px-3 py-2">
                                 <span class="text-xs ${t.textSec}">Gedetecteerde rol</span>
                                 <span class="text-xs px-2 py-1 rounded-full border ${getRoleStyle(detectedRole)}">${getRoleLabel(detectedRole)}</span>
@@ -717,7 +717,7 @@
             const role = state.user.role;
             const allowedViews = getAllowedViews(role);
             const actionCards = [
-                { view: 'move', title: 'Verplaatsen', subtitle: 'Machine naar locatie', icon: 'move-right', bgClass: 'bg-red-500/20', iconClass: 'text-red-500' },
+                { view: 'move', title: 'Verplaatsen', subtitle: 'Machine naar locatie', icon: 'move-right', bgClass: 'bg-violet-500/20', iconClass: 'text-violet-500' },
                 { view: 'tasks', title: 'Opdrachten', subtitle: 'Aanvragen collega', icon: 'clipboard-list', bgClass: 'bg-blue-500/20', iconClass: 'text-blue-400' },
                 { view: 'receive', title: 'Ontvangst', subtitle: 'Pakbon koppelen', icon: 'package-check', bgClass: 'bg-emerald-500/20', iconClass: 'text-emerald-400' },
                 { view: 'history', title: 'Historie', subtitle: 'Laatste scans', icon: 'history', bgClass: 'bg-amber-500/20', iconClass: 'text-amber-400' }
@@ -782,7 +782,7 @@
                     <div class="flex-1 overflow-y-auto no-scrollbar space-y-2 pb-20">
                         ${recentHistory.map(item => GlassCard(`
                             <div class="flex items-start gap-3">
-                                <div class="w-10 h-10 rounded-xl flex items-center justify-center ${item.type === 'move' ? 'bg-red-500/20 text-red-400' : 'bg-emerald-500/20 text-emerald-400'}">
+                                <div class="w-10 h-10 rounded-xl flex items-center justify-center ${item.type === 'move' ? 'bg-violet-500/20 text-violet-400' : 'bg-emerald-500/20 text-emerald-400'}">
                                     <i data-lucide="${item.type === 'move' ? 'move-right' : 'package-check'}" width="18"></i>
                                 </div>
                                 <div class="flex-1 min-w-0">
@@ -850,7 +850,7 @@
 
                     ${asset ? GlassCard(`
                         <div class="flex items-start gap-3">
-                            <div class="w-12 h-12 rounded-xl bg-red-500/20 flex items-center justify-center text-red-400"><i data-lucide="truck" width="20"></i></div>
+                            <div class="w-12 h-12 rounded-xl bg-violet-500/20 flex items-center justify-center text-violet-400"><i data-lucide="truck" width="20"></i></div>
                             <div class="flex-1 min-w-0">
                                 <div class="flex items-center justify-between gap-2 mb-1">
                                     <h3 class="font-bold truncate">${asset.description}</h3>
@@ -1052,7 +1052,7 @@
                     <div class="flex-1 overflow-y-auto no-scrollbar pb-20 space-y-2">
                         ${state.db.history.map(item => GlassCard(`
                             <div class="flex items-start gap-3">
-                                <div class="w-10 h-10 rounded-xl flex items-center justify-center ${item.type === 'move' ? 'bg-red-500/20 text-red-400' : 'bg-emerald-500/20 text-emerald-400'}">
+                                <div class="w-10 h-10 rounded-xl flex items-center justify-center ${item.type === 'move' ? 'bg-violet-500/20 text-violet-400' : 'bg-emerald-500/20 text-emerald-400'}">
                                     <i data-lucide="${item.type === 'move' ? 'move-right' : 'package-check'}" width="18"></i>
                                 </div>
                                 <div class="flex-1 min-w-0">
@@ -1246,7 +1246,7 @@
                             <textarea readonly class="w-full h-56 rounded-xl border px-3 py-2 text-xs font-mono outline-none ${t.input}">${exportJson}</textarea>
                             <div class="grid grid-cols-2 gap-2">
                                 <button onclick="window.copyExportJson()" class="px-3 py-2 rounded-xl border font-semibold ${t.chip}">${state.exportCopied ? 'Gekopieerd ✓' : 'Kopieer JSON'}</button>
-                                <button onclick="window.downloadExportJson()" class="px-3 py-2 rounded-xl border font-semibold bg-red-600 text-white border-red-500 hover:bg-red-500">Download JSON</button>
+                                <button onclick="window.downloadExportJson()" class="px-3 py-2 rounded-xl border font-semibold bg-violet-600 text-white border-violet-500 hover:bg-violet-500">Download JSON</button>
                             </div>
                         </div>
                     </div>
@@ -1257,18 +1257,17 @@
         function renderNav() {
             const t = getTheme();
             const navItems = [
-                { view: 'dashboard', icon: 'home', label: 'Home' },
-                { view: 'move', icon: 'move-right', label: 'Move' },
-                { view: 'tasks', icon: 'clipboard-list', label: 'Tasks' },
-                { view: 'receive', icon: 'package-check', label: 'Receive' },
-                { view: 'history', icon: 'history', label: 'History' },
-                { view: 'datamodel', icon: 'database', label: 'Data Model' }
+                { view: 'dashboard', icon: 'house', label: 'Home' },
+                { view: 'move', icon: 'compass', label: 'Ontdek' },
+                { view: 'tasks', icon: 'bell', label: 'Meldingen' },
+                { view: 'history', icon: 'message-circle', label: 'Berichten' },
+                { view: 'datamodel', icon: 'user', label: 'Profiel' }
             ].filter(item => canAccessView(item.view));
             return GlassCard(`
                 <div class="flex justify-around items-center">
-                    ${navItems.map(item => `<button onclick="window.navigate('${item.view}')" class="p-2 rounded-xl flex flex-col items-center gap-1 ${state.view === item.view ? 'text-red-500 bg-red-500/10' : t.textSec}"><i data-lucide="${item.icon}" width="18"></i><span class="text-[10px] leading-none">${item.label}</span></button>`).join('')}
+                    ${navItems.map(item => `<button onclick="window.navigate('${item.view}')" class="p-2 rounded-xl flex flex-col items-center gap-1 ${state.view === item.view ? 'text-violet-500 bg-violet-500/15' : t.textSec}"><i data-lucide="${item.icon}" width="18"></i><span class="text-[10px] leading-none">${item.label}</span></button>`).join('')}
                 </div>
-            `, `fixed bottom-3 left-4 right-4 max-w-md mx-auto !p-1.5 ${t.nav}`);
+            `, `fixed bottom-0 left-0 right-0 max-w-md mx-auto rounded-t-2xl !p-2 border-t ${t.nav}`);
         }
 
         function renderScanner() {
@@ -1297,7 +1296,7 @@
                         <p class="text-xs uppercase tracking-[0.2em] text-white/60">Mock input</p>
                         <div class="flex gap-2">
                             <input value="${state.scannerManualValue}" oninput="window.updateScannerManual(this.value)" placeholder="Typ gescande code" class="flex-1 rounded-xl border border-white/15 bg-white/10 px-3 py-3 text-white outline-none placeholder:text-white/30" />
-                            <button onclick="window.confirmManualScan()" class="px-4 py-3 rounded-xl bg-red-600 text-white font-semibold">Gebruik</button>
+                            <button onclick="window.confirmManualScan()" class="px-4 py-3 rounded-xl bg-violet-600 text-white font-semibold">Gebruik</button>
                         </div>
                     </div>
                 </div>
