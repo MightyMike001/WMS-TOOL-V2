@@ -172,7 +172,6 @@
             moveVisibleAssets: 6,
             taskStatusFilter: 'all',
             taskDateSort: 'newest',
-            showNavOverflow: false,
             showExportModal: false,
             exportCopied: false,
             forms: {
@@ -345,10 +344,10 @@
 
         function getAllowedViews(role) {
             const byRole = {
-                planner: ['dashboard', 'move', 'tasks', 'receive', 'history', 'datamodel'],
-                expeditie: ['dashboard', 'move', 'receive', 'history', 'datamodel'],
-                monteur: ['dashboard', 'move', 'tasks', 'history', 'datamodel'],
-                manager: ['dashboard', 'history', 'datamodel']
+                planner: ['dashboard', 'move', 'tasks', 'receive', 'history', 'settings', 'datamodel'],
+                expeditie: ['dashboard', 'move', 'receive', 'history', 'settings', 'datamodel'],
+                monteur: ['dashboard', 'move', 'tasks', 'history', 'settings', 'datamodel'],
+                manager: ['dashboard', 'history', 'settings', 'datamodel']
             };
             return byRole[role] || ['dashboard'];
         }
@@ -831,6 +830,23 @@
                         `)).join('')}
                     </div>
 
+                    ${canAccessView('settings') ? `
+                        <div class="mb-4">
+                            ${GlassCard(`
+                                <button onclick="window.navigate('settings')" class="w-full text-left flex items-center justify-between gap-3">
+                                    <div class="flex items-center gap-3">
+                                        <div class="w-10 h-10 rounded-xl bg-slate-500/20 flex items-center justify-center text-slate-300"><i data-lucide="settings" width="18"></i></div>
+                                        <div>
+                                            <div class="font-bold ${t.textMain}">Instellingen</div>
+                                            <div class="text-xs ${t.textSec}">Beheerfuncties zoals datamodel en export</div>
+                                        </div>
+                                    </div>
+                                    <i data-lucide="chevron-right" width="18" class="${t.textSec}"></i>
+                                </button>
+                            `)}
+                        </div>
+                    ` : ''}
+
                     ${role === 'manager' ? GlassCard(`
                         <div class="mb-4">
                             <p class="text-xs uppercase tracking-[0.25em] ${t.textSec}">Manager inzicht</p>
@@ -1035,7 +1051,7 @@
             const form = state.forms.receipt;
             const linkedAsset = getAssetByCode(form.serial) || getAssetByCode(form.device);
             return renderScreen({
-                title: 'Goederenontvangst',
+                title: 'Ontvangst',
                 subtitle: 'Pakbon en extern nummer koppelen aan device en serienummer.',
                 topActions: [
                     `<button onclick="window.navigate('dashboard')" class="p-2 rounded-xl border ${t.chip}" aria-label="Terug naar dashboard"><i data-lucide="arrow-left" width="18"></i></button>`
@@ -1194,10 +1210,10 @@
             ];
 
             return renderScreen({
-                title: 'Data Model',
-                subtitle: 'Dataverse-ready overzicht van tabellen, kolommen en relaties.',
+                title: 'Datamodel',
+                subtitle: 'Overzicht van tabellen, kolommen en relaties voor beheer.',
                 topActions: [
-                    `<button onclick="window.navigate('dashboard')" class="p-2 rounded-xl border ${t.chip}" aria-label="Terug naar dashboard"><i data-lucide="arrow-left" width="18"></i></button>`
+                    `<button onclick="window.navigate('settings')" class="p-2 rounded-xl border ${t.chip}" aria-label="Terug naar instellingen"><i data-lucide="arrow-left" width="18"></i></button>`
                 ],
                 content: `
                     ${GlassCard(`
@@ -1266,6 +1282,28 @@
             });
         }
 
+        function renderSettings() {
+            const t = getTheme();
+            return renderScreen({
+                title: 'Instellingen',
+                subtitle: 'Secundaire beheerfuncties buiten de primaire navigatie.',
+                topActions: [
+                    `<button onclick="window.navigate('dashboard')" class="p-2 rounded-xl border ${t.chip}" aria-label="Terug naar dashboard"><i data-lucide="arrow-left" width="18"></i></button>`
+                ],
+                content: `
+                    ${GlassCard(`
+                        <div class="flex items-start justify-between gap-3">
+                            <div>
+                                <h2 class="font-bold ${t.textMain}">Datamodel & export</h2>
+                                <p class="text-xs ${t.textSec}">Open het datamodel en exporteer mockdata als JSON.</p>
+                            </div>
+                            <button onclick="window.navigate('datamodel')" class="px-3 py-2 rounded-xl border text-sm font-semibold ${t.chip}">Openen</button>
+                        </div>
+                    `)}
+                `
+            });
+        }
+
         function renderExportModal() {
             if (!state.showExportModal) return '';
             const t = getTheme();
@@ -1305,31 +1343,14 @@
             const t = getTheme();
             const primaryItems = [
                 { view: 'dashboard', icon: 'home', label: 'Home' },
-                { view: 'move', icon: 'move-right', label: 'Move' },
-                { view: 'tasks', icon: 'clipboard-list', label: 'Tasks' },
-                { view: 'receive', icon: 'package-check', label: 'Receive' },
-                { view: 'history', icon: 'history', label: 'History' }
+                { view: 'move', icon: 'move-right', label: 'Verplaatsen' },
+                { view: 'tasks', icon: 'clipboard-list', label: 'Opdrachten' },
+                { view: 'receive', icon: 'package-check', label: 'Ontvangst' },
+                { view: 'history', icon: 'history', label: 'Historie' }
             ].filter(item => canAccessView(item.view));
-            const overflowItems = [
-                { view: 'datamodel', icon: 'database', label: 'Data Model' }
-            ].filter(item => canAccessView(item.view));
-            const isOverflowActive = overflowItems.some(item => item.view === state.view);
             return GlassCard(`
                 <div class="relative flex justify-around items-center gap-1">
                     ${primaryItems.map(item => `<button onclick="window.navigate('${item.view}')" class="p-2 min-w-[58px] rounded-xl border flex flex-col items-center gap-1 transition-colors ${state.view === item.view ? 'nav-active' : `${t.textSec} border-transparent hover:border-default`}"><i data-lucide="${item.icon}" width="18"></i><span class="text-[10px] leading-none">${item.label}</span></button>`).join('')}
-                    ${overflowItems.length ? `
-                        <div class="relative">
-                            <button onclick="window.toggleNavOverflow()" class="p-2 min-w-[58px] rounded-xl border flex flex-col items-center gap-1 transition-colors ${isOverflowActive ? 'nav-active' : `${t.textSec} border-transparent hover:border-default`}">
-                                <i data-lucide="ellipsis" width="18"></i>
-                                <span class="text-[10px] leading-none">Meer</span>
-                            </button>
-                            ${state.showNavOverflow ? `
-                                <div class="absolute bottom-14 right-0 min-w-[168px] rounded-xl border ${t.glass} backdrop-blur-xl p-1.5 z-20">
-                                    ${overflowItems.map(item => `<button onclick="window.navigate('${item.view}')" class="w-full text-left px-3 py-2 rounded-lg text-sm flex items-center gap-2 ${state.view === item.view ? 'text-accent bg-accent-subtle' : `${t.textMain} hover:bg-chip`}"><i data-lucide="${item.icon}" width="15"></i><span>${item.label}</span></button>`).join('')}
-                                </div>
-                            ` : ''}
-                        </div>
-                    ` : ''}
                 </div>
             `, `!p-1.5 ${t.nav}`);
         }
@@ -1484,11 +1505,7 @@
                 setFlash('Deze rol heeft geen toegang tot dit onderdeel.', 'warning');
                 return;
             }
-            setState({ view, showNavOverflow: false });
-        };
-        window.toggleNavOverflow = () => {
-            state.showNavOverflow = !state.showNavOverflow;
-            render();
+            setState({ view });
         };
         window.toggleTheme = () => { state.darkMode = !state.darkMode; render(); };
         window.updateLocationField = (section, field, value) => updateForm(section, field, value);
@@ -1674,6 +1691,8 @@
                 html = renderReceive();
             } else if (state.view === 'history') {
                 html = renderHistory();
+            } else if (state.view === 'settings') {
+                html = renderSettings();
             } else if (state.view === 'datamodel') {
                 html = renderDatamodel();
             }
