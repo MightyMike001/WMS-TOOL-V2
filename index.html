@@ -723,7 +723,8 @@
                 { view: 'history', title: 'Historie', subtitle: 'Laatste scans', icon: 'history', bgClass: 'bg-amber-500/20', iconClass: 'text-amber-400' }
             ].filter(card => allowedViews.includes(card.view));
             return `
-                <div class="h-full flex flex-col px-4 pt-4 pb-2 overflow-hidden">
+                <div class="h-full flex flex-col px-4 pt-3 pb-0 overflow-hidden">
+                    ${renderTopNavigation('App Naam', 'Startpagina met overzichtelijke inhoud en acties.')}
                     <div class="flex items-center justify-between mb-4">
                         <div>
                             <p class="text-xs uppercase tracking-[0.25em] ${t.textSec}">Operator</p>
@@ -779,7 +780,7 @@
                         <h3 class="font-semibold ${t.textMain}">Recente activiteit</h3>
                         <button onclick="window.resetMockData()" class="text-xs px-3 py-1 rounded-full border ${t.chip}">Reset mockdata</button>
                     </div>
-                    <div class="flex-1 overflow-y-auto no-scrollbar space-y-2 pb-20">
+                    <div class="flex-1 overflow-y-auto no-scrollbar space-y-2 pb-24">
                         ${recentHistory.map(item => GlassCard(`
                             <div class="flex items-start gap-3">
                                 <div class="w-10 h-10 rounded-xl flex items-center justify-center ${item.type === 'move' ? 'bg-red-500/20 text-red-400' : 'bg-emerald-500/20 text-emerald-400'}">
@@ -801,6 +802,21 @@
             `;
         }
 
+        function renderTopNavigation(title, subtitle = '') {
+            const t = getTheme();
+            return `
+                <div class="rounded-2xl border mb-4 px-4 py-3 ${state.darkMode ? 'bg-white/5 border-white/10' : 'bg-white border-slate-200'}">
+                    <div class="flex items-center justify-between gap-3">
+                        <div class="min-w-0">
+                            <h2 class="font-bold ${t.textMain} truncate">${title}</h2>
+                            ${subtitle ? `<p class="text-xs ${t.textSec} truncate">${subtitle}</p>` : ''}
+                        </div>
+                        <button class="p-2 rounded-xl border ${t.chip}"><i data-lucide="bell" width="18"></i></button>
+                    </div>
+                </div>
+            `;
+        }
+
         function renderMove() {
             const t = getTheme();
             const form = state.forms.move;
@@ -809,14 +825,8 @@
             const filteredAssets = getFilteredAssets();
             const visibleAssets = filteredAssets.slice(0, state.moveVisibleAssets);
             return `
-                <div class="h-full flex flex-col px-4 pt-4 pb-2 overflow-hidden">
-                    <div class="flex items-center gap-3 mb-4">
-                        <button onclick="window.navigate('dashboard')" class="p-2 rounded-xl border ${t.chip}"><i data-lucide="arrow-left" width="18"></i></button>
-                        <div>
-                            <h1 class="text-lg font-bold ${t.textMain}">Verplaatsen</h1>
-                            <p class="text-xs ${t.textSec}">Scan of typ serienummer en doellocatie.</p>
-                        </div>
-                    </div>
+                <div class="h-full flex flex-col px-4 pt-3 pb-0 overflow-hidden">
+                    ${renderTopNavigation('Ontdek', 'Zoek assets en verplaats naar een nieuwe locatie.')}
 
                     ${linkedTask ? GlassCard(`
                         <div class="flex items-start justify-between gap-3">
@@ -871,7 +881,7 @@
                         </div>
                     `, 'mb-3')}
 
-                    <div class="flex-1 overflow-y-auto no-scrollbar pb-20 space-y-2">
+                    <div class="flex-1 overflow-y-auto no-scrollbar pb-24 space-y-2">
                         ${visibleAssets.map(assetItem => GlassCard(`
                             <button onclick="window.prefillMove('${assetItem.serial}')" class="w-full text-left flex items-center gap-3">
                                 <div class="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center"><i data-lucide="scan-search" width="18"></i></div>
@@ -897,14 +907,8 @@
             const canCreate = state.user.role === 'planner';
             const availableAssignees = MOCK_USERS.filter(user => user.role === 'monteur' || user.role === 'expeditie');
             return `
-                <div class="h-full flex flex-col px-4 pt-4 pb-2 overflow-hidden">
-                    <div class="flex items-center gap-3 mb-4">
-                        <button onclick="window.navigate('dashboard')" class="p-2 rounded-xl border ${t.chip}"><i data-lucide="arrow-left" width="18"></i></button>
-                        <div>
-                            <h1 class="text-lg font-bold ${t.textMain}">Opdrachten</h1>
-                            <p class="text-xs ${t.textSec}">${state.user.role === 'monteur' ? 'Alleen jouw toegewezen taken.' : 'Aanvragen van collega\'s voor verplaatsingen.'}</p>
-                        </div>
-                    </div>
+                <div class="h-full flex flex-col px-4 pt-3 pb-0 overflow-hidden">
+                    ${renderTopNavigation('Meldingen', state.user.role === 'monteur' ? 'Alleen jouw toegewezen taken.' : 'Aanvragen van collega\'s voor verplaatsingen.')}
 
                     ${canCreate ? GlassCard(`
                         <div class="space-y-3">
@@ -946,7 +950,7 @@
                         </div>
                     `, 'mb-3')}
 
-                    <div class="flex-1 overflow-y-auto no-scrollbar pb-20 space-y-2">
+                    <div class="flex-1 overflow-y-auto no-scrollbar pb-24 space-y-2">
                         ${tasks.map(task => GlassCard(`
                             <div class="flex items-start gap-3">
                                 <div class="w-10 h-10 rounded-xl flex items-center justify-center ${task.status === 'Open' ? 'bg-blue-500/20 text-blue-400' : 'bg-emerald-500/20 text-emerald-400'}">
@@ -977,14 +981,8 @@
             const form = state.forms.receipt;
             const linkedAsset = getAssetByCode(form.serial) || getAssetByCode(form.device);
             return `
-                <div class="h-full flex flex-col px-4 pt-4 pb-2 overflow-hidden">
-                    <div class="flex items-center gap-3 mb-4">
-                        <button onclick="window.navigate('dashboard')" class="p-2 rounded-xl border ${t.chip}"><i data-lucide="arrow-left" width="18"></i></button>
-                        <div>
-                            <h1 class="text-lg font-bold ${t.textMain}">Goederenontvangst</h1>
-                            <p class="text-xs ${t.textSec}">Pakbon en extern nummer koppelen aan device en serienummer.</p>
-                        </div>
-                    </div>
+                <div class="h-full flex flex-col px-4 pt-3 pb-0 overflow-hidden">
+                    ${renderTopNavigation('Ontvangst', 'Pakbon en extern nummer koppelen aan device en serienummer.')}
 
                     ${GlassCard(`
                         <div class="space-y-3">
@@ -1021,7 +1019,7 @@
                         <p class="text-sm ${t.textSec}">Huidig device: <span class="font-mono ${t.textMain}">${linkedAsset.device}</span></p>
                     `, 'mb-3') : GlassCard(`<p class="text-sm ${t.textSec}">Nog geen bestaande machine gevonden. Bij registreren wordt een nieuwe machine aangemaakt in de mockup.</p>`, 'mb-3')}
 
-                    <div class="flex-1 overflow-y-auto no-scrollbar pb-20 space-y-2">
+                    <div class="flex-1 overflow-y-auto no-scrollbar pb-24 space-y-2">
                         ${state.db.receipts.slice(0, 8).map(item => GlassCard(`
                             <div class="flex items-start gap-3">
                                 <div class="w-10 h-10 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center"><i data-lucide="package-check" width="18"></i></div>
@@ -1041,15 +1039,9 @@
         function renderHistory() {
             const t = getTheme();
             return `
-                <div class="h-full flex flex-col px-4 pt-4 pb-2 overflow-hidden">
-                    <div class="flex items-center gap-3 mb-4">
-                        <button onclick="window.navigate('dashboard')" class="p-2 rounded-xl border ${t.chip}"><i data-lucide="arrow-left" width="18"></i></button>
-                        <div>
-                            <h1 class="text-lg font-bold ${t.textMain}">Historie</h1>
-                            <p class="text-xs ${t.textSec}">Laatste verplaatsingen en ontvangsten.</p>
-                        </div>
-                    </div>
-                    <div class="flex-1 overflow-y-auto no-scrollbar pb-20 space-y-2">
+                <div class="h-full flex flex-col px-4 pt-3 pb-0 overflow-hidden">
+                    ${renderTopNavigation('Berichten', 'Laatste verplaatsingen en ontvangsten.')}
+                    <div class="flex-1 overflow-y-auto no-scrollbar pb-24 space-y-2">
                         ${state.db.history.map(item => GlassCard(`
                             <div class="flex items-start gap-3">
                                 <div class="w-10 h-10 rounded-xl flex items-center justify-center ${item.type === 'move' ? 'bg-red-500/20 text-red-400' : 'bg-emerald-500/20 text-emerald-400'}">
@@ -1143,14 +1135,8 @@
             ];
 
             return `
-                <div class="h-full flex flex-col px-4 pt-4 pb-2 overflow-hidden">
-                    <div class="flex items-center gap-3 mb-4">
-                        <button onclick="window.navigate('dashboard')" class="p-2 rounded-xl border ${t.chip}"><i data-lucide="arrow-left" width="18"></i></button>
-                        <div>
-                            <h1 class="text-lg font-bold ${t.textMain}">Data Model</h1>
-                            <p class="text-xs ${t.textSec}">Dataverse-ready overzicht van tabellen, kolommen en relaties.</p>
-                        </div>
-                    </div>
+                <div class="h-full flex flex-col px-4 pt-3 pb-0 overflow-hidden">
+                    ${renderTopNavigation('Profiel', 'Dataverse-ready overzicht van tabellen, kolommen en relaties.')}
 
                     ${GlassCard(`
                         <div class="flex items-start justify-between gap-3">
@@ -1183,7 +1169,7 @@
                         </div>
                     `, 'mb-3')}
 
-                    <div class="flex-1 overflow-y-auto no-scrollbar pb-20 space-y-3">
+                    <div class="flex-1 overflow-y-auto no-scrollbar pb-24 space-y-3">
                         ${entities.map(entity => GlassCard(`
                             <div class="space-y-3">
                                 <div class="flex items-start justify-between gap-3">
@@ -1257,18 +1243,19 @@
         function renderNav() {
             const t = getTheme();
             const navItems = [
-                { view: 'dashboard', icon: 'home', label: 'Home' },
-                { view: 'move', icon: 'move-right', label: 'Move' },
-                { view: 'tasks', icon: 'clipboard-list', label: 'Tasks' },
-                { view: 'receive', icon: 'package-check', label: 'Receive' },
-                { view: 'history', icon: 'history', label: 'History' },
-                { view: 'datamodel', icon: 'database', label: 'Data Model' }
-            ].filter(item => canAccessView(item.view));
-            return GlassCard(`
-                <div class="flex justify-around items-center">
-                    ${navItems.map(item => `<button onclick="window.navigate('${item.view}')" class="p-2 rounded-xl flex flex-col items-center gap-1 ${state.view === item.view ? 'text-red-500 bg-red-500/10' : t.textSec}"><i data-lucide="${item.icon}" width="18"></i><span class="text-[10px] leading-none">${item.label}</span></button>`).join('')}
+                { view: 'dashboard', icon: 'house', label: 'Home' },
+                { view: 'move', icon: 'compass', label: 'Ontdek' },
+                { view: 'tasks', icon: 'bell', label: 'Meldingen' },
+                { view: 'history', icon: 'message-circle-more', label: 'Berichten' },
+                { view: 'datamodel', icon: 'user-round', label: 'Profiel' }
+            ];
+            return `
+                <div class="fixed bottom-0 left-0 right-0 z-20 border-t ${state.darkMode ? 'bg-[#09090f]/95 border-white/10' : 'bg-white/95 border-slate-200'} backdrop-blur-xl">
+                    <div class="max-w-md mx-auto px-2 py-2 grid grid-cols-5 gap-1">
+                        ${navItems.map(item => `<button onclick="window.navigate('${item.view}')" class="p-2 rounded-xl flex flex-col items-center gap-1 transition-colors ${state.view === item.view ? 'text-violet-500 bg-violet-500/10' : t.textSec}"><i data-lucide="${item.icon}" width="18"></i><span class="text-[10px] leading-none">${item.label}</span></button>`).join('')}
+                    </div>
                 </div>
-            `, `fixed bottom-3 left-4 right-4 max-w-md mx-auto !p-1.5 ${t.nav}`);
+            `;
         }
 
         function renderScanner() {
