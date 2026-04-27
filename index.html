@@ -8,15 +8,83 @@
     <script src="https://unpkg.com/lucide@latest"></script>
     <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
     <style>
+        :root {
+            --accent-rgb: 239 68 68;
+            --surface-rgb: 5 5 5;
+            --text-rgb: 248 250 252;
+            --text-muted-rgb: 203 213 225;
+            --border-rgb: 255 255 255;
+            --card-rgb: 255 255 255;
+            --chip-rgb: 255 255 255;
+            --input-rgb: 255 255 255;
+            --nav-rgb: 255 255 255;
+            --accent-contrast-rgb: 255 255 255;
+            --accent-soft-opacity: .16;
+            --accent-border-opacity: .5;
+            --border-opacity: .15;
+            --card-opacity: .1;
+            --chip-opacity: .1;
+            --input-opacity: .05;
+            --nav-opacity: .06;
+            --glass-shadow: 0 8px 32px 0 rgba(0,0,0,.35);
+        }
+
+        body[data-theme='light'] {
+            --accent-rgb: 220 38 38;
+            --surface-rgb: 243 246 251;
+            --text-rgb: 15 23 42;
+            --text-muted-rgb: 71 85 105;
+            --border-rgb: 148 163 184;
+            --card-rgb: 255 255 255;
+            --chip-rgb: 241 245 249;
+            --input-rgb: 255 255 255;
+            --nav-rgb: 255 255 255;
+            --accent-contrast-rgb: 255 255 255;
+            --border-opacity: .35;
+            --card-opacity: .82;
+            --chip-opacity: 1;
+            --input-opacity: 1;
+            --nav-opacity: .78;
+            --glass-shadow: 0 8px 32px 0 rgba(148,163,184,.2);
+        }
+
+        .bg-surface { background-color: rgb(var(--surface-rgb)); }
+        .text-main { color: rgb(var(--text-rgb)); }
+        .text-muted { color: rgb(var(--text-muted-rgb) / .88); }
+        .text-muted-soft { color: rgb(var(--text-muted-rgb) / .7); }
+        .border-default { border-color: rgb(var(--border-rgb) / var(--border-opacity)); }
+        .bg-card { background-color: rgb(var(--card-rgb) / var(--card-opacity)); }
+        .bg-chip { background-color: rgb(var(--chip-rgb) / var(--chip-opacity)); }
+        .bg-input { background-color: rgb(var(--input-rgb) / var(--input-opacity)); }
+        .bg-nav { background-color: rgb(var(--nav-rgb) / var(--nav-opacity)); }
+        .shadow-glass { box-shadow: var(--glass-shadow); }
+
+        .text-accent { color: rgb(var(--accent-rgb)); }
+        .bg-accent { background-color: rgb(var(--accent-rgb)); }
+        .bg-accent-soft { background-color: rgb(var(--accent-rgb) / var(--accent-soft-opacity)); }
+        .bg-accent-subtle { background-color: rgb(var(--accent-rgb) / .12); }
+        .border-accent { border-color: rgb(var(--accent-rgb) / var(--accent-border-opacity)); }
+        .ring-accent { --tw-ring-color: rgb(var(--accent-rgb) / .45); }
+        .selection-accent::selection { background-color: rgb(var(--accent-rgb) / .28); }
+        .focus-accent:focus { border-color: rgb(var(--accent-rgb)); }
+
+        .btn-accent { background-color: rgb(var(--accent-rgb)); color: rgb(var(--accent-contrast-rgb)); border-color: rgb(var(--accent-rgb) / .78); }
+        .btn-accent:hover { background-color: rgb(var(--accent-rgb) / .9); }
+        .btn-accent-soft { background-color: rgb(var(--accent-rgb) / .86); color: rgb(var(--accent-contrast-rgb)); border-color: rgb(var(--accent-rgb) / .75); }
+        .btn-accent-soft:hover { background-color: rgb(var(--accent-rgb)); }
+
+        .icon-badge-accent { background-color: rgb(var(--accent-rgb) / .18); color: rgb(var(--accent-rgb)); }
+        .nav-active { color: rgb(var(--accent-rgb)); border-color: rgb(var(--accent-rgb) / .5); background-color: rgb(var(--accent-rgb) / .15); }
+
         .no-scrollbar::-webkit-scrollbar { display: none; }
         .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
         #reader video { object-fit: cover; width: 100% !important; height: 100% !important; border-radius: 1.5rem; }
     </style>
 </head>
-<body class="bg-[#050505] text-white h-screen w-screen overflow-hidden font-sans selection:bg-red-500/30">
+<body data-theme="dark" class="bg-surface text-main h-screen w-screen overflow-hidden font-sans selection-accent">
     <div class="fixed inset-0 pointer-events-none overflow-hidden">
-        <div class="absolute -top-[20%] -left-[10%] w-[70%] h-[50%] bg-red-600/20 rounded-full blur-[120px] animate-pulse mix-blend-screen"></div>
-        <div class="absolute top-[40%] -right-[10%] w-[60%] h-[60%] bg-blue-600/10 rounded-full blur-[120px] mix-blend-screen"></div>
+        <div class="absolute -top-[20%] -left-[10%] w-[70%] h-[50%] bg-accent-soft rounded-full blur-[120px] animate-pulse mix-blend-screen"></div>
+        <div class="absolute top-[40%] -right-[10%] w-[60%] h-[60%] bg-accent-subtle rounded-full blur-[120px] mix-blend-screen"></div>
     </div>
     <div id="app" class="relative z-10 h-full w-full max-w-md mx-auto"></div>
 
@@ -168,21 +236,20 @@
 
         function getTheme() {
             return {
-                bg: state.darkMode ? 'bg-[#050505]' : 'bg-[#f3f6fb]',
-                textMain: state.darkMode ? 'text-white' : 'text-slate-900',
-                textSec: state.darkMode ? 'text-white/60' : 'text-slate-500',
-                glass: state.darkMode
-                    ? 'bg-white/10 border-white/15 shadow-[0_8px_32px_0_rgba(0,0,0,0.35)]'
-                    : 'bg-white/80 border-slate-200 shadow-[0_8px_32px_0_rgba(148,163,184,0.18)]',
-                chip: state.darkMode ? 'bg-white/10 border-white/15' : 'bg-slate-100 border-slate-200',
-                input: state.darkMode ? 'border-white/15 bg-white/5 text-white placeholder:text-white/30' : 'border-slate-200 bg-white text-slate-900 placeholder:text-slate-400',
-                nav: state.darkMode ? 'bg-white/5 border-white/10' : 'bg-white/70 border-slate-200'
+                bg: 'bg-surface',
+                textMain: 'text-main',
+                textSec: 'text-muted',
+                glass: 'bg-card border-default shadow-glass',
+                chip: 'bg-chip border-default',
+                input: 'border-default bg-input text-main placeholder:text-muted-soft',
+                nav: 'bg-nav border-default'
             };
         }
 
         function syncBodyTheme() {
             const body = document.body;
-            body.className = `${state.darkMode ? 'bg-[#050505] text-white' : 'bg-[#f3f6fb] text-slate-900'} h-screen w-screen overflow-hidden font-sans selection:bg-red-500/30`;
+            body.dataset.theme = state.darkMode ? 'dark' : 'light';
+            body.className = 'bg-surface text-main h-screen w-screen overflow-hidden font-sans selection-accent';
         }
 
         function GlassCard(content, extraClasses = '') {
@@ -197,9 +264,9 @@
 
         function Button(label, onClick, variant = 'primary', icon = '') {
             const variants = {
-                primary: 'bg-red-600 text-white border-red-500 hover:bg-red-500',
-                secondary: state.darkMode ? 'bg-white/10 text-white border-white/15 hover:bg-white/15' : 'bg-white text-slate-900 border-slate-200 hover:bg-slate-50',
-                success: 'bg-emerald-600 text-white border-emerald-500 hover:bg-emerald-500'
+                primary: 'btn-accent',
+                secondary: 'bg-chip text-main border-default hover:bg-card',
+                success: 'btn-accent-soft'
             };
             return `
                 <button onclick="${onClick}" class="w-full px-4 py-3 rounded-xl border font-semibold flex items-center justify-center gap-2 transition-all active:scale-95 ${variants[variant]}">
@@ -396,14 +463,14 @@
             const hasError = Boolean(getFieldError(section, field));
             if (!hasError) return '';
             return state.darkMode
-                ? 'border-red-400 ring-1 ring-red-400/70'
-                : 'border-red-500 ring-1 ring-red-500/40';
+                ? 'border-accent ring-1 ring-accent'
+                : 'border-accent ring-1 ring-accent';
         }
 
         function renderFieldError(section, field) {
             const message = getFieldError(section, field);
             if (!message) return '';
-            return `<p class="mt-1 text-xs text-red-300">${message}</p>`;
+            return `<p class="mt-1 text-xs text-accent">${message}</p>`;
         }
 
         function getMissingFieldErrors(formValues, requiredFields) {
@@ -684,9 +751,9 @@
             return `
                 <div class="h-full flex flex-col items-center justify-center p-6">
                     <div class="mb-8 relative">
-                        <div class="absolute inset-0 bg-red-500 blur-3xl opacity-20 rounded-full animate-pulse"></div>
+                        <div class="absolute inset-0 bg-accent-soft blur-3xl opacity-90 rounded-full animate-pulse"></div>
                         <div class="w-20 h-20 rounded-2xl flex items-center justify-center ${state.darkMode ? 'bg-white/10 border border-white/20' : 'bg-white border border-slate-200 shadow-xl'}">
-                            <i data-lucide="scan-line" class="text-red-500" width="40" height="40"></i>
+                            <i data-lucide="scan-line" class="text-accent" width="40" height="40"></i>
                         </div>
                     </div>
                     <h1 class="text-2xl font-bold mb-2 ${t.textMain}">WMS Mockup V1</h1>
@@ -698,7 +765,7 @@
                                 <option value="">Kies gebruiker uit lijst</option>
                                 ${MOCK_USERS.map(user => `<option value="${user.initials}" ${state.loginInitials === user.initials ? 'selected' : ''}>${user.initials} · ${user.name} (${getRoleLabel(user.role)})</option>`).join('')}
                             </select>
-                            <input type="text" value="${state.loginInitials || ''}" oninput="window.handleInitials(this.value)" placeholder="EXP" maxlength="4" class="w-full bg-transparent text-center text-4xl font-mono font-bold outline-none border-b-2 py-3 tracking-[0.4em] uppercase placeholder:opacity-20 ${state.darkMode ? 'text-white border-white/20 focus:border-red-500' : 'text-slate-900 border-slate-300 focus:border-red-500'}" />
+                            <input type="text" value="${state.loginInitials || ''}" oninput="window.handleInitials(this.value)" placeholder="EXP" maxlength="4" class="w-full bg-transparent text-center text-4xl font-mono font-bold outline-none border-b-2 py-3 tracking-[0.4em] uppercase placeholder:opacity-20 ${state.darkMode ? 'text-white border-white/20 focus-accent' : 'text-slate-900 border-slate-300 focus-accent'}" />
                             <div class="flex items-center justify-between rounded-xl border ${t.chip} px-3 py-2">
                                 <span class="text-xs ${t.textSec}">Gedetecteerde rol</span>
                                 <span class="text-xs px-2 py-1 rounded-full border ${getRoleStyle(detectedRole)}">${getRoleLabel(detectedRole)}</span>
@@ -718,10 +785,10 @@
             const role = state.user.role;
             const allowedViews = getAllowedViews(role);
             const actionCards = [
-                { view: 'move', title: 'Verplaatsen', subtitle: 'Machine naar locatie', icon: 'move-right', bgClass: 'bg-red-500/20', iconClass: 'text-red-500' },
-                { view: 'tasks', title: 'Opdrachten', subtitle: 'Aanvragen collega', icon: 'clipboard-list', bgClass: 'bg-blue-500/20', iconClass: 'text-blue-400' },
-                { view: 'receive', title: 'Ontvangst', subtitle: 'Pakbon koppelen', icon: 'package-check', bgClass: 'bg-emerald-500/20', iconClass: 'text-emerald-400' },
-                { view: 'history', title: 'Historie', subtitle: 'Laatste scans', icon: 'history', bgClass: 'bg-amber-500/20', iconClass: 'text-amber-400' }
+                { view: 'move', title: 'Verplaatsen', subtitle: 'Machine naar locatie', icon: 'move-right' },
+                { view: 'tasks', title: 'Opdrachten', subtitle: 'Aanvragen collega', icon: 'clipboard-list' },
+                { view: 'receive', title: 'Ontvangst', subtitle: 'Pakbon koppelen', icon: 'package-check' },
+                { view: 'history', title: 'Historie', subtitle: 'Laatste scans', icon: 'history' }
             ].filter(card => allowedViews.includes(card.view));
             return `
                 <div class="h-full flex flex-col px-4 pt-4 pb-2 overflow-hidden">
@@ -757,7 +824,7 @@
                         ${actionCards.map(card => GlassCard(`
                             <button onclick="window.navigate('${card.view}')" class="w-full text-left">
                                 <div class="flex items-center gap-3">
-                                    <div class="w-10 h-10 rounded-xl ${card.bgClass} flex items-center justify-center"><i data-lucide="${card.icon}" class="${card.iconClass}" width="18"></i></div>
+                                    <div class="w-10 h-10 rounded-xl icon-badge-accent flex items-center justify-center"><i data-lucide="${card.icon}" class="text-accent" width="18"></i></div>
                                     <div><div class="font-bold">${card.title}</div><div class="text-xs ${t.textSec}">${card.subtitle}</div></div>
                                 </div>
                             </button>
@@ -781,7 +848,7 @@
                     <div class="flex-1 overflow-y-auto no-scrollbar space-y-2 pb-20">
                         ${recentHistory.map(item => GlassCard(`
                             <div class="flex items-start gap-3">
-                                <div class="w-10 h-10 rounded-xl flex items-center justify-center ${item.type === 'move' ? 'bg-red-500/20 text-red-400' : 'bg-emerald-500/20 text-emerald-400'}">
+                                <div class="w-10 h-10 rounded-xl flex items-center justify-center ${item.type === 'move' ? 'icon-badge-accent' : 'bg-accent-subtle text-accent'}">
                                     <i data-lucide="${item.type === 'move' ? 'move-right' : 'package-check'}" width="18"></i>
                                 </div>
                                 <div class="flex-1 min-w-0">
@@ -845,7 +912,7 @@
 
                     ${asset ? GlassCard(`
                         <div class="flex items-start gap-3">
-                            <div class="w-12 h-12 rounded-xl bg-red-500/20 flex items-center justify-center text-red-400"><i data-lucide="truck" width="20"></i></div>
+                            <div class="w-12 h-12 rounded-xl icon-badge-accent flex items-center justify-center"><i data-lucide="truck" width="20"></i></div>
                             <div class="flex-1 min-w-0">
                                 <div class="flex items-center justify-between gap-2 mb-1">
                                     <h3 class="font-bold truncate">${asset.description}</h3>
@@ -1035,7 +1102,7 @@
                     <div class="flex-1 overflow-y-auto no-scrollbar pb-20 space-y-2">
                         ${state.db.history.map(item => GlassCard(`
                             <div class="flex items-start gap-3">
-                                <div class="w-10 h-10 rounded-xl flex items-center justify-center ${item.type === 'move' ? 'bg-red-500/20 text-red-400' : 'bg-emerald-500/20 text-emerald-400'}">
+                                <div class="w-10 h-10 rounded-xl flex items-center justify-center ${item.type === 'move' ? 'icon-badge-accent' : 'bg-accent-subtle text-accent'}">
                                     <i data-lucide="${item.type === 'move' ? 'move-right' : 'package-check'}" width="18"></i>
                                 </div>
                                 <div class="flex-1 min-w-0">
@@ -1225,7 +1292,7 @@
                             <textarea readonly class="w-full h-56 rounded-xl border px-3 py-2 text-xs font-mono outline-none ${t.input}">${exportJson}</textarea>
                             <div class="grid grid-cols-2 gap-2">
                                 <button onclick="window.copyExportJson()" class="px-3 py-2 rounded-xl border font-semibold ${t.chip}">${state.exportCopied ? 'Gekopieerd ✓' : 'Kopieer JSON'}</button>
-                                <button onclick="window.downloadExportJson()" class="px-3 py-2 rounded-xl border font-semibold bg-red-600 text-white border-red-500 hover:bg-red-500">Download JSON</button>
+                                <button onclick="window.downloadExportJson()" class="px-3 py-2 rounded-xl border font-semibold btn-accent">Download JSON</button>
                             </div>
                         </div>
                     </div>
@@ -1248,16 +1315,16 @@
             const isOverflowActive = overflowItems.some(item => item.view === state.view);
             return GlassCard(`
                 <div class="relative flex justify-around items-center gap-1">
-                    ${primaryItems.map(item => `<button onclick="window.navigate('${item.view}')" class="p-2 min-w-[58px] rounded-xl border flex flex-col items-center gap-1 transition-colors ${state.view === item.view ? 'text-red-500 border-red-500/50 bg-red-500/15' : `${t.textSec} border-transparent hover:border-white/15`}"><i data-lucide="${item.icon}" width="18"></i><span class="text-[10px] leading-none">${item.label}</span></button>`).join('')}
+                    ${primaryItems.map(item => `<button onclick="window.navigate('${item.view}')" class="p-2 min-w-[58px] rounded-xl border flex flex-col items-center gap-1 transition-colors ${state.view === item.view ? 'nav-active' : `${t.textSec} border-transparent hover:border-default`}"><i data-lucide="${item.icon}" width="18"></i><span class="text-[10px] leading-none">${item.label}</span></button>`).join('')}
                     ${overflowItems.length ? `
                         <div class="relative">
-                            <button onclick="window.toggleNavOverflow()" class="p-2 min-w-[58px] rounded-xl border flex flex-col items-center gap-1 transition-colors ${isOverflowActive ? 'text-red-500 border-red-500/50 bg-red-500/15' : `${t.textSec} border-transparent hover:border-white/15`}">
+                            <button onclick="window.toggleNavOverflow()" class="p-2 min-w-[58px] rounded-xl border flex flex-col items-center gap-1 transition-colors ${isOverflowActive ? 'nav-active' : `${t.textSec} border-transparent hover:border-default`}">
                                 <i data-lucide="ellipsis" width="18"></i>
                                 <span class="text-[10px] leading-none">Meer</span>
                             </button>
                             ${state.showNavOverflow ? `
                                 <div class="absolute bottom-14 right-0 min-w-[168px] rounded-xl border ${t.glass} backdrop-blur-xl p-1.5 z-20">
-                                    ${overflowItems.map(item => `<button onclick="window.navigate('${item.view}')" class="w-full text-left px-3 py-2 rounded-lg text-sm flex items-center gap-2 ${state.view === item.view ? 'text-red-500 bg-red-500/10' : `${t.textMain} hover:bg-white/10`}"><i data-lucide="${item.icon}" width="15"></i><span>${item.label}</span></button>`).join('')}
+                                    ${overflowItems.map(item => `<button onclick="window.navigate('${item.view}')" class="w-full text-left px-3 py-2 rounded-lg text-sm flex items-center gap-2 ${state.view === item.view ? 'text-accent bg-accent-subtle' : `${t.textMain} hover:bg-chip`}"><i data-lucide="${item.icon}" width="15"></i><span>${item.label}</span></button>`).join('')}
                                 </div>
                             ` : ''}
                         </div>
@@ -1305,7 +1372,7 @@
                         <p class="text-xs uppercase tracking-[0.2em] text-white/60">Mock input</p>
                         <div class="flex gap-2">
                             <input value="${state.scannerManualValue}" oninput="window.updateScannerManual(this.value)" placeholder="Typ gescande code" class="flex-1 rounded-xl border border-white/15 bg-white/10 px-3 py-3 text-white outline-none placeholder:text-white/30" />
-                            <button onclick="window.confirmManualScan()" class="px-4 py-3 rounded-xl bg-red-600 text-white font-semibold">Gebruik</button>
+                            <button onclick="window.confirmManualScan()" class="px-4 py-3 rounded-xl btn-accent font-semibold">Gebruik</button>
                         </div>
                     </div>
                 </div>
